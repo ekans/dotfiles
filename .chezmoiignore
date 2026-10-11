@@ -1,0 +1,7 @@
+# Repo files, not home files. quickshell/ and niri/ reach ~/.config through
+# the symlinks in dot_config/, so edits to the live config land in this repo.
+AGENTS.md
+quickshell
+quickshell/**
+niri
+niri/**
