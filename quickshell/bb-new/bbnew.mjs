@@ -1,6 +1,6 @@
 // Logic for the new bb thread overlay (shell.qml): reading what bb lists,
-// cycling the model and the effort, the project list, and the
-// `bb thread spawn` command.
+// cycling the model and the effort, the project list, the poteto switch, and
+// the `bb thread spawn` command.
 //
 // Plain ECMAScript, no QML: the overlay imports it and tests/bbnew.test.mjs
 // runs it under node. Keep to what Qt's JavaScript engine parses — no object
@@ -17,7 +17,10 @@ export const NO_PROJECT = { id: "", name: "No project" };
 
 // What a thread starts with until Ctrl+S saves something else. Ids; "" is no
 // project.
-export const DEFAULTS = { model: "opus", effort: "high", project: "" };
+export const DEFAULTS = { model: "opus", effort: "high", project: "", poteto: false };
+
+// What poteto mode puts in front of the prompt, so it need not be typed.
+export const POTETO_PREFIX = "/poteto-mode ";
 
 // Claude Code's aliases, offered ahead of the models bb lists: a thread
 // started with one gets the newest model of that family, so no version is
@@ -34,7 +37,7 @@ export const FALLBACK_MODELS = [
     { id: "opus", name: "Opus", efforts: ["low", "medium", "high", "xhigh", "ultracode", "max"], defaultEffort: "high" },
 ];
 
-const SETTINGS = ["model", "effort", "project"];
+const SETTINGS = ["model", "effort", "project", "poteto"];
 
 function parseJson(text) {
     try {
@@ -181,6 +184,7 @@ export function normalize(settings, models, projects) {
         model: model ? model.id : settings.model,
         effort: effortFor(model, settings.effort),
         project: project,
+        poteto: settings.poteto === true,
     };
 }
 
@@ -224,7 +228,8 @@ export function filterProjects(projects, query) {
 // --- starting the thread --------------------------------------------------------------
 
 // `bb thread spawn` for `prompt` with these settings. `--prompt=` keeps a prompt
-// that starts with a dash from reading as an option.
+// that starts with a dash from reading as an option. A prompt that already
+// starts with "/poteto-mode" is not prefixed twice.
 export function spawnCommand(bb, settings, prompt) {
     const command = [bb, "thread", "spawn", "--json", "--provider", PROVIDER,
         "--model", settings.model, "--reasoning-level", settings.effort];
@@ -232,7 +237,8 @@ export function spawnCommand(bb, settings, prompt) {
         command.push("--project", settings.project);
     else
         command.push("--project", PERSONAL_PROJECT, "--environment-provider", PERSONAL_ENVIRONMENT);
-    command.push("--prompt=" + prompt);
+    const prefixed = settings.poteto && prompt.indexOf(POTETO_PREFIX.trim()) !== 0;
+    command.push("--prompt=" + (prefixed ? POTETO_PREFIX + prompt : prompt));
     return command;
 }
 
@@ -254,7 +260,7 @@ export function parseSpawn(stdout, stderr, code) {
 // A default set with `qs ipc call bbnew set <key> <value>`, checked against what
 // bb lists: {value, error}, value the id to store. A model or a project may be
 // given by id or by name, no project as "none"; an effort has to be one the
-// default model takes.
+// default model takes; poteto is on or off.
 export function checkDefault(key, value, models, projects, modelId) {
     const v = String(value || "").trim();
     const lower = v.toLowerCase();
@@ -279,7 +285,14 @@ export function checkDefault(key, value, models, projects, modelId) {
             return { value: project.id, error: "" };
         return { value: "", error: "unknown project " + JSON.stringify(v) + "; see `bb project list`, or none" };
     }
-    return { value: "", error: "unknown setting " + JSON.stringify(key) + "; model, effort or project" };
+    if (key === "poteto") {
+        if (["on", "true", "yes", "1"].indexOf(lower) !== -1)
+            return { value: true, error: "" };
+        if (["off", "false", "no", "0"].indexOf(lower) !== -1)
+            return { value: false, error: "" };
+        return { value: false, error: "poteto takes on or off, not " + JSON.stringify(v) };
+    }
+    return { value: "", error: "unknown setting " + JSON.stringify(key) + "; model, effort, project or poteto" };
 }
 
 // --- Super+Space's bb page ----------------------------------------------------------------
