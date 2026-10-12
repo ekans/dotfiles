@@ -67,6 +67,10 @@ ShellRoot {
     }
 
     function submit() {
+        // Enter with the power menu open is not a login; the letters that
+        // follow would be power actions.
+        if (root.powerOpen)
+            return;
         root.dispatch({ type: "submit", available: Greetd.available });
     }
 

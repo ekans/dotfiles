@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs the greeter against a fake greetd inside niri-sandbox (nothing appears
 # on the live session) and takes the screenshots of a login: idle, typing, a
-# wrong password, GNOME picked, the power menu, a right password. Fails unless
-# the fake greetd was asked to start GNOME.
+# greetd that never answers and Escape, a wrong password, GNOME picked, Enter
+# with the power menu open (which must not log in), a right password. Fails
+# unless the fake greetd was asked to start GNOME after exactly three attempts.
 #
 #   tests/proof.sh [OUTPUT_DIR]      screenshots and greetd.log land there
 set -euo pipefail
@@ -34,17 +35,29 @@ shot 02-typing
 key -k Return
 shot 03-wrong 0.25
 sleep 1.5
+key stall
+key -k Return
+shot 04-checking
+key -k Escape
+shot 05-escaped
 key -k Tab
-shot 04-gnome
+shot 06-gnome
+key zz
 key -M ctrl -M alt -k Delete -m alt -m ctrl
-shot 05-power
+key -k Return
+shot 07-power
+key -k Escape
 key -k Escape
 key hunter2
 key -k Return
-shot 06-success 0.9
+shot 08-success 0.9
 sleep 4
 
 echo "--- what greetd was asked"
 cat "$out/greetd.log"
 grep -q '"type":"start_session","cmd":\["/usr/bin/gnome-session"\]' "$out/greetd.log"
 echo "ok: greetd was asked to start gnome-session"
+[ "$(grep -c '"type":"create_session"' "$out/greetd.log")" = 3 ]
+echo "ok: three attempts, none from Enter with the power menu open"
+grep -q '"stalled":true}' "$out/greetd.log" && grep -q '"type":"cancel_session"' "$out/greetd.log"
+echo "ok: Escape cancelled the attempt greetd never answered"
