@@ -149,7 +149,7 @@ test("effortFor keeps an effort the model takes, else its default, else its firs
 test("normalize fits the settings to what bb lists", () => {
     assert.deepEqual(normalize(DEFAULTS, models, projects), DEFAULTS);
     assert.deepEqual(normalize({ model: "claude-sonnet-5-5", effort: "xhigh", project: "proj_kmyjbmui8h" }, models, projects),
-        { model: "claude-sonnet-5-5", effort: "medium", project: "proj_kmyjbmui8h" });
+        { model: "claude-sonnet-5-5", effort: "medium", project: "proj_kmyjbmui8h", poteto: false });
     // A model bb dropped: its first one.
     assert.equal(normalize({ model: "claude-gone", effort: "high", project: "" }, models, projects).model, "opus");
     // A project bb dropped: no project; before bb answers, it stays.
@@ -158,8 +158,9 @@ test("normalize fits the settings to what bb lists", () => {
 });
 
 test("changes tells each setting that is not the default", () => {
-    assert.deepEqual(changes(DEFAULTS, DEFAULTS), { model: false, effort: false, project: false });
-    assert.deepEqual(changes({ model: DEFAULTS.model, effort: "max", project: "proj_x" }, DEFAULTS), { model: false, effort: true, project: true });
+    assert.deepEqual(changes(DEFAULTS, DEFAULTS), { model: false, effort: false, project: false, poteto: false });
+    assert.deepEqual(changes({ model: DEFAULTS.model, effort: "max", project: "proj_x", poteto: false }, DEFAULTS), { model: false, effort: true, project: true, poteto: false });
+    assert.equal(changes({ model: "opus", effort: "high", project: "", poteto: true }, DEFAULTS).poteto, true);
 });
 
 test("filterProjects: no project first, prefix matches before the rest", () => {
@@ -188,6 +189,31 @@ test("spawnCommand leaves the environment of a project to bb", () => {
     assert.ok(!command.includes("--environment-provider"));
 });
 
+test("spawnCommand prefixes the prompt with /poteto-mode when poteto is on", () => {
+    assert.deepEqual(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: true }, "fix it"), [
+        "bb", "thread", "spawn", "--json", "--provider", "claude-code",
+        "--model", "opus", "--reasoning-level", "high",
+        "--project", "proj_personal", "--environment-provider", "personal-workspace",
+        "--prompt=/poteto-mode fix it",
+    ]);
+});
+
+test("spawnCommand does not double a /poteto-mode the prompt already starts with", () => {
+    const on = { model: "opus", effort: "high", project: "", poteto: true };
+    assert.equal(spawnCommand("bb", on, "/poteto-mode fix it").pop(), "--prompt=/poteto-mode fix it");
+    assert.equal(spawnCommand("bb", on, "/poteto-mode").pop(), "--prompt=/poteto-mode");
+});
+
+test("spawnCommand leaves the prompt as typed when poteto is off", () => {
+    assert.equal(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: false }, "fix it").pop(), "--prompt=fix it");
+    assert.equal(spawnCommand("bb", { model: "opus", effort: "high", project: "" }, "fix it").pop(), "--prompt=fix it");
+});
+
+test("normalize keeps poteto on and defaults a missing one to off", () => {
+    assert.equal(normalize({ model: "opus", effort: "high", project: "", poteto: true }, models, projects).poteto, true);
+    assert.equal(normalize({ model: "opus", effort: "high", project: "" }, models, projects).poteto, false);
+});
+
 test("parseSpawn reads the thread id, or bb's error", () => {
     assert.deepEqual(parseSpawn('{"id":"thr_abc","status":"active"}', "", 0), { id: "thr_abc", error: "" });
     assert.deepEqual(parseSpawn('{"thread":{"id":"thr_def"}}', "", 0), { id: "thr_def", error: "" });
@@ -212,7 +238,12 @@ test("checkDefault takes ids or names and refuses what bb does not list", () => 
     assert.deepEqual(checkDefault("project", "none", models, projects, ""), { value: "", error: "" });
     assert.deepEqual(checkDefault("project", "No project", models, projects, ""), { value: "", error: "" });
     assert.match(checkDefault("project", "nope", models, projects, "").error, /unknown project "nope"/);
-    assert.match(checkDefault("colour", "red", models, projects, "").error, /unknown setting "colour"/);
+    assert.match(checkDefault("colour", "red", models, projects, "").error, /unknown setting "colour"; model, effort, project or poteto/);
+    assert.deepEqual(checkDefault("poteto", "ON", models, projects, ""), { value: true, error: "" });
+    assert.deepEqual(checkDefault("poteto", "off", models, projects, ""), { value: false, error: "" });
+    assert.deepEqual(checkDefault("poteto", "Yes", models, projects, ""), { value: true, error: "" });
+    assert.deepEqual(checkDefault("poteto", "0", models, projects, ""), { value: false, error: "" });
+    assert.match(checkDefault("poteto", "maybe", models, projects, "").error, /poteto takes on or off, not "maybe"/);
 });
 
 test("leaderArguments offers the aliases and the default model's efforts", () => {

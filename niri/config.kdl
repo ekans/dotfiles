@@ -30,7 +30,7 @@ binds {
     Mod+Shift+A hotkey-overlay-title="Ask bb about a UI element or screenshot" { spawn "/var/home/ducatore/.local/bin/pick-to-bb"; }
 
     // Write a prompt, start a bb thread: Opus 5.5, high, no project, unless
-    // changed with Alt+M/E/P (Ctrl+S saves the change as the default). The
+    // changed with Alt+M/E/P/T (Ctrl+S saves the change as the default). The
     // overlay lives in ~/.config/quickshell/bb-new.
     Mod+N hotkey-overlay-title="New bb thread" { spawn "/usr/bin/qs" "-c" "bb-new" "ipc" "call" "bbnew" "toggle"; }
 
