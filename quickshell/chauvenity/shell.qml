@@ -503,6 +503,10 @@ ShellRoot {
             readonly property var outputWorkspaces:
                 root.workspaces.filter(ws => ws.output === bar.modelData.name)
 
+            // One breakpoint for the right items, which pass it on: a laptop's
+            // bar has no room for their labels.
+            readonly property bool compact: bar.width < 1600
+
             readonly property bool hinting: root.hintOutput === bar.modelData.name
             // The items with a hint and their letters, `[{ item, key }]`,
             // worked out as the hints come up.
@@ -746,18 +750,21 @@ ShellRoot {
                     anchors.verticalCenter: parent.verticalCenter
                     theme: root
                     panels: barPanels
+                    compact: bar.compact
                     summary: root.claudeUsage
                     now: clock.date
                 }
 
                 Network {
                     anchors.verticalCenter: parent.verticalCenter
+                    compact: bar.compact
                     theme: root
                     panels: barPanels
                 }
 
                 Volume {
                     anchors.verticalCenter: parent.verticalCenter
+                    compact: bar.compact
                     theme: root
                     panels: barPanels
                 }
@@ -785,6 +792,7 @@ ShellRoot {
 
                 Clock {
                     anchors.verticalCenter: parent.verticalCenter
+                    compact: bar.compact
                     theme: root
                     panels: barPanels
                     now: clock.date
