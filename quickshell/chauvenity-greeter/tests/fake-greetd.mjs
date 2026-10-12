@@ -9,6 +9,8 @@
 // The log has one JSON object per line, one per request. The password is
 // never written to it, only whether it was the right one.
 //
+// The password "stall" is never answered, for a greetd that hangs.
+//
 // greetd's rules it keeps to: a session is created before it is answered, a
 // refused password ends the session, and start_session needs an accepted one.
 
@@ -44,6 +46,10 @@ export function startFakeGreetd({ socket, password = "hunter2", log = null, laun
             case "post_auth_message_response":
                 if (session !== "asked")
                     return error("no question is waiting");
+                if (request.response === "stall") {
+                    record({ type: "post_auth_message_response", stalled: true });
+                    return { type: "none", delay: 3600000 };
+                }
                 if (request.response === password) {
                     session = "accepted";
                     record({ type: "post_auth_message_response", correct: true });

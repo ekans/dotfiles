@@ -158,9 +158,25 @@ test("typing is ignored while greetd checks and after it accepted", () => {
     assert.equal(step(accepted, typed("")).state.buffer, "abc");
 });
 
-test("a broken connection after the session was accepted changes nothing", () => {
+test("a broken connection after the session was accepted is an error, not a screen that never answers", () => {
     const accepted = run([typed("abc"), submit, askForPassword, { type: "readyToLaunch" }]).state;
-    assert.deepEqual(step(accepted, { type: "error" }), { state: accepted, effects: [] });
+    const broken = step(accepted, { type: "error" });
+    assert.equal(broken.state.phase, "error");
+    assert.deepEqual(broken.effects, [{ type: "cancelSession" }, { type: "settleLater" }]);
+});
+
+test("Escape while greetd is checking cancels the attempt", () => {
+    const checking = run([typed("abc"), submit]).state;
+    const { state, effects } = step(checking, typed(""));
+    assert.equal(state.phase, "idle");
+    assert.equal(state.buffer, "");
+    assert.deepEqual(effects, [{ type: "cancelSession" }]);
+    assert.deepEqual(step(state, { type: "readyToLaunch" }), { state, effects: [] });
+});
+
+test("Escape after the session was accepted changes nothing", () => {
+    const accepted = run([typed("abc"), submit, askForPassword, { type: "readyToLaunch" }]).state;
+    assert.deepEqual(step(accepted, typed("")), { state: accepted, effects: [] });
 });
 
 test("a stray authFailure or readyToLaunch outside an attempt is ignored", () => {

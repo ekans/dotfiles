@@ -171,7 +171,7 @@ const failed = (state, phase, effects) => ({
 
 // The next state, and what the shell is to do about it. Events:
 //
-//   {type: "edit", text}        the buffer changed
+//   {type: "edit", text}        the buffer changed; "" while checking is Escape
 //   {type: "submit", available} Enter; `available`: greetd's socket is there
 //   {type: "authMessage", responseRequired, ...}   from greetd
 //   {type: "authFailure"}       greetd refused the password
@@ -185,6 +185,9 @@ export function step(state, event) {
     const busy = state.phase === "checking" || state.phase === "unlocked";
     switch (event.type) {
     case "edit":
+        // Escape while greetd is thinking: give up on the attempt.
+        if (state.phase === "checking" && event.text === "")
+            return { state: update(state, { phase: "idle", buffer: "", answered: false }), effects: [{ type: "cancelSession" }] };
         if (busy)
             return { state, effects: [] };
         return { state: update(state, { buffer: event.text, phase: event.text === "" ? "idle" : "typing" }), effects: [] };
@@ -207,7 +210,7 @@ export function step(state, event) {
             ? { state: update(state, { phase: "unlocked" }), effects: [{ type: "launchSoon" }] }
             : { state, effects: [] };
     case "error":
-        return state.phase === "unlocked" ? { state, effects: [] } : failed(state, "error", [{ type: "cancelSession" }]);
+        return failed(state, "error", [{ type: "cancelSession" }]);
     case "settle":
         return {
             state: state.phase === "wrong" || state.phase === "error" ? settled(state) : state,
