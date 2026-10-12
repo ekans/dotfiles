@@ -33,6 +33,7 @@ import Quickshell.Services.Pipewire
 import "calendar.mjs" as Cal
 import "claude-pace.mjs" as Pace
 import "hints.mjs" as Hints
+import "window-title.mjs" as WindowTitle
 
 ShellRoot {
     id: root
@@ -726,11 +727,13 @@ ShellRoot {
                     Text {
                         id: titleText
                         width: Math.max(0, centre.width - centre.iconSlot)
-                        elide: Text.ElideRight
+                        // The end of a title (repo, file) is what tells windows apart.
+                        elide: Text.ElideMiddle
                         // Any client sets its own title. AutoText would render markup
                         // in it, <img src="https://…"> included, and fetch that URL.
                         textFormat: Text.PlainText
-                        text: centre.toplevel?.title ?? ""
+                        text: WindowTitle.withoutAppName(centre.toplevel?.title ?? "", centre.entry?.name ?? "",
+                                                         centre.toplevel?.appId ?? "")
                         color: root.dimColor
                         font.pixelSize: 12
                     }
