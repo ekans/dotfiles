@@ -19,8 +19,14 @@ export const NO_PROJECT = { id: "", name: "No project" };
 // project.
 export const DEFAULTS = { model: "opus", effort: "high", project: "", poteto: false };
 
-// What poteto mode puts in front of the prompt, so it need not be typed.
+// What poteto mode puts at the start of the prompt, where it shows. The prompt
+// text is the only record of the mode: it is on while the text starts with this.
 export const POTETO_PREFIX = "/poteto-mode ";
+
+// The leading /poteto-mode, whole, with the whitespace after it. Not the start
+// of a longer word.
+const POTETO = /^\s*\/poteto-mode(?:\s+|$)/;
+const POTETO_REPEAT = /^\/poteto-mode(?:\s+|$)/;
 
 // Claude Code's aliases, offered ahead of the models bb lists: a thread
 // started with one gets the newest model of that family, so no version is
@@ -225,11 +231,38 @@ export function filterProjects(projects, query) {
     return starting.concat(holding);
 }
 
+// --- poteto mode in the prompt ----------------------------------------------------------
+
+// How much of `text` is the /poteto-mode prefix, 0 if it has none.
+export function potetoLength(text) {
+    const match = POTETO.exec(text);
+    return match ? match[0].length : 0;
+}
+
+export function hasPoteto(text) {
+    return potetoLength(text) > 0;
+}
+
+// A paste lands after the prefix the cursor sits behind, so it can carry a
+// second one. The {start, end} to remove, or null.
+export function repeatedPoteto(text) {
+    const start = potetoLength(text);
+    if (start === 0)
+        return null;
+    const match = POTETO_REPEAT.exec(text.slice(start));
+    return match ? { start: start, end: start + match[0].length } : null;
+}
+
+// Nothing to start a thread with: whitespace, and maybe the prefix.
+export function isBlank(text) {
+    return text.slice(potetoLength(text)).trim() === "";
+}
+
 // --- starting the thread --------------------------------------------------------------
 
 // `bb thread spawn` for `prompt` with these settings. `--prompt=` keeps a prompt
-// that starts with a dash from reading as an option. A prompt that already
-// starts with "/poteto-mode" is not prefixed twice.
+// that starts with a dash from reading as an option. Poteto mode is already in
+// the prompt, as its prefix.
 export function spawnCommand(bb, settings, prompt) {
     const command = [bb, "thread", "spawn", "--json", "--provider", PROVIDER,
         "--model", settings.model, "--reasoning-level", settings.effort];
@@ -237,8 +270,7 @@ export function spawnCommand(bb, settings, prompt) {
         command.push("--project", settings.project);
     else
         command.push("--project", PERSONAL_PROJECT, "--environment-provider", PERSONAL_ENVIRONMENT);
-    const prefixed = settings.poteto && prompt.indexOf(POTETO_PREFIX.trim()) !== 0;
-    command.push("--prompt=" + (prefixed ? POTETO_PREFIX + prompt : prompt));
+    command.push("--prompt=" + prompt);
     return command;
 }
 

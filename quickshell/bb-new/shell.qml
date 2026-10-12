@@ -42,7 +42,7 @@ pragma ComponentBehavior: Bound
 //
 // Keys: Enter start · Shift+Enter new line · Alt+M / Alt+Shift+M next /
 // previous model · Alt+E / Alt+Shift+E next / previous effort · Alt+P pick the
-// project · Alt+T poteto mode (prefix the prompt with /poteto-mode) · Ctrl+S
+// project · Alt+T poteto mode (the /poteto-mode prefix shows in the prompt) · Ctrl+S
 // save these settings as the defaults · Esc close.
 // Project list: type to filter · ↑↓ or Ctrl+J/K select · Enter pick · Esc or
 // Alt+P back to the prompt.
@@ -90,7 +90,8 @@ ShellRoot {
     property string model: Logic.DEFAULTS.model
     property string effort: Logic.DEFAULTS.effort
     property string project: Logic.DEFAULTS.project
-    property bool poteto: Logic.DEFAULTS.poteto
+    // On while the prompt starts with /poteto-mode, typed or put there by Alt+T.
+    readonly property bool poteto: Logic.hasPoteto(promptInput.text)
 
     readonly property var models: store.models.length > 0 ? store.models : Logic.FALLBACK_MODELS
     readonly property var projects: store.projects
@@ -214,7 +215,7 @@ ShellRoot {
     // Opens on the output niri has focused rather than wherever Qt puts it.
     function present(output) {
         root.targetScreen = Quickshell.screens.find(s => s.name === output) ?? Quickshell.screens[0];
-        if (promptInput.text.trim() === "") {
+        if (Logic.isBlank(promptInput.text)) {
             root.useDefaults();
             root.error = "";
         }
@@ -253,7 +254,15 @@ ShellRoot {
         root.model = settings.model;
         root.effort = settings.effort;
         root.project = settings.project;
-        root.poteto = settings.poteto;
+        root.setPoteto(settings.poteto);
+    }
+
+    // insert and remove, not .text, keep the cursor and the undo history.
+    function setPoteto(on) {
+        if (on && !root.poteto)
+            promptInput.insert(0, Logic.POTETO_PREFIX);
+        else if (!on && root.poteto)
+            promptInput.remove(0, Logic.potetoLength(promptInput.text));
     }
 
     Process {
@@ -362,12 +371,12 @@ ShellRoot {
 
     function start() {
         const prompt = promptInput.text.trim();
-        if (root.starting || prompt === "")
+        if (root.starting || Logic.isBlank(prompt))
             return;
         root.error = "";
         root.notice = "";
         root.starting = true;
-        spawner.exec(Logic.spawnCommand(root.bb, { model: root.model, effort: root.effort, project: root.project, poteto: root.poteto }, prompt));
+        spawner.exec(Logic.spawnCommand(root.bb, { model: root.model, effort: root.effort, project: root.project }, prompt));
         spawnTimeout.restart();
     }
 
@@ -434,7 +443,7 @@ ShellRoot {
             else
                 root.beginPick();
         } else if (alt && key === Qt.Key_T) {
-            root.poteto = !root.poteto;
+            root.setPoteto(!root.poteto);
         } else if (ctrl && key === Qt.Key_S) {
             root.saveDefaults();
         } else if (root.picking && (key === Qt.Key_Down || (ctrl && (key === Qt.Key_J || key === Qt.Key_N)))) {
@@ -597,6 +606,11 @@ ShellRoot {
                                 font.family: root.monoFont
                                 font.pixelSize: 14
                                 font.features: root.noLigatures
+                                onTextChanged: {
+                                    const repeat = Logic.repeatedPoteto(promptInput.text);
+                                    if (repeat)
+                                        promptInput.remove(repeat.start, repeat.end);
+                                }
                                 onCursorRectangleChanged: promptFlick.follow(promptInput.cursorRectangle)
                                 Keys.onPressed: event => {
                                     if (root.handleKey(event))
@@ -605,10 +619,17 @@ ShellRoot {
                             }
 
                             Text {
-                                visible: promptInput.text.length === 0
+                                visible: Logic.isBlank(promptInput.text)
+                                x: prefixMetrics.advanceWidth
                                 text: "What should the agent do?"
                                 color: root.dimColor
                                 font: promptInput.font
+
+                                TextMetrics {
+                                    id: prefixMetrics
+                                    font: promptInput.font
+                                    text: promptInput.text.slice(0, Logic.potetoLength(promptInput.text))
+                                }
                             }
                         }
                     }

@@ -23,6 +23,10 @@ import {
     changes,
     filterProjects,
     spawnCommand,
+    potetoLength,
+    hasPoteto,
+    repeatedPoteto,
+    isBlank,
     parseSpawn,
     checkDefault,
     leaderArguments,
@@ -189,24 +193,52 @@ test("spawnCommand leaves the environment of a project to bb", () => {
     assert.ok(!command.includes("--environment-provider"));
 });
 
-test("spawnCommand prefixes the prompt with /poteto-mode when poteto is on", () => {
-    assert.deepEqual(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: true }, "fix it"), [
+test("spawnCommand sends the prompt as given, the poteto prefix with the rest", () => {
+    assert.deepEqual(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: true }, "/poteto-mode fix it"), [
         "bb", "thread", "spawn", "--json", "--provider", "claude-code",
         "--model", "opus", "--reasoning-level", "high",
         "--project", "proj_personal", "--environment-provider", "personal-workspace",
         "--prompt=/poteto-mode fix it",
     ]);
+    assert.equal(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: true }, "fix it").pop(), "--prompt=fix it");
 });
 
-test("spawnCommand does not double a /poteto-mode the prompt already starts with", () => {
-    const on = { model: "opus", effort: "high", project: "", poteto: true };
-    assert.equal(spawnCommand("bb", on, "/poteto-mode fix it").pop(), "--prompt=/poteto-mode fix it");
-    assert.equal(spawnCommand("bb", on, "/poteto-mode").pop(), "--prompt=/poteto-mode");
+test("potetoLength counts a leading /poteto-mode and the whitespace after it", () => {
+    assert.equal(potetoLength("/poteto-mode fix it"), 13);
+    assert.equal(potetoLength("/poteto-mode"), 12);
+    assert.equal(potetoLength("/poteto-mode\nfoo"), 13);
+    assert.equal(potetoLength("  /poteto-mode   foo"), 17);
+    assert.equal(potetoLength("/poteto-modex"), 0);
+    assert.equal(potetoLength("fix /poteto-mode it"), 0);
+    assert.equal(potetoLength(""), 0);
 });
 
-test("spawnCommand leaves the prompt as typed when poteto is off", () => {
-    assert.equal(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: false }, "fix it").pop(), "--prompt=fix it");
-    assert.equal(spawnCommand("bb", { model: "opus", effort: "high", project: "" }, "fix it").pop(), "--prompt=fix it");
+test("hasPoteto is whether the prompt starts with /poteto-mode", () => {
+    assert.equal(hasPoteto("/poteto-mode "), true);
+    assert.equal(hasPoteto("/poteto-mode"), true);
+    assert.equal(hasPoteto("/poteto-modex"), false);
+    assert.equal(hasPoteto("fix it"), false);
+});
+
+test("repeatedPoteto finds a second /poteto-mode right after the first", () => {
+    assert.deepEqual(repeatedPoteto("/poteto-mode /poteto-mode fix it"), { start: 13, end: 26 });
+    assert.deepEqual(repeatedPoteto("/poteto-mode /poteto-mode"), { start: 13, end: 25 });
+    assert.deepEqual(repeatedPoteto("/poteto-mode \n /poteto-mode  fix"), { start: 15, end: 29 });
+    assert.equal(repeatedPoteto("/poteto-mode fix it"), null);
+    assert.equal(repeatedPoteto("/poteto-mode /poteto-modex"), null);
+    assert.equal(repeatedPoteto("/poteto-mode fix /poteto-mode"), null);
+    assert.equal(repeatedPoteto("fix /poteto-mode /poteto-mode"), null);
+    assert.equal(repeatedPoteto(""), null);
+});
+
+test("isBlank is whitespace with at most the poteto prefix", () => {
+    assert.equal(isBlank(""), true);
+    assert.equal(isBlank(" \n "), true);
+    assert.equal(isBlank("/poteto-mode"), true);
+    assert.equal(isBlank("/poteto-mode \n"), true);
+    assert.equal(isBlank("/poteto-mode fix"), false);
+    assert.equal(isBlank("/poteto-modex"), false);
+    assert.equal(isBlank("fix"), false);
 });
 
 test("normalize keeps poteto on and defaults a missing one to off", () => {
