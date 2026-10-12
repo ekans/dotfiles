@@ -14,10 +14,12 @@ pragma ComponentBehavior: Bound
 //
 // niri's IPC has no on-screen position for tiled windows, and its own window
 // picker holds the pointer until a click with no way to call it off, which
-// would trap Tab. So right after the freeze, picktobb.py captures each window
-// of the workspace and finds where it sits on the frozen screen; a click then
-// only looks the window up. The frozen screen takes every click, so the app
-// under it never sees one.
+// would trap Tab. So the first element or window click has picktobb.py capture
+// each window of the workspace and find where it sits on the frozen screen;
+// later clicks only look the window up. Not before: each niri capture posts a
+// "Screenshot captured" notification and lands in the clipboard history, which
+// a region, the whole screen or Escape must not leave behind. The frozen screen
+// takes every click, so the app under it never sees one.
 
 import QtQuick
 import Quickshell
@@ -136,8 +138,12 @@ ShellRoot {
     // Start the lookups the last clicks wait for, once the frozen screen and
     // the windows on it are known; a click while one runs waits for it.
     function pump() {
-        if (!screenSaved || !windowsReady)
+        if (!screenSaved)
             return;
+        if ((locating || findingWindow) && !windowsReady) {
+            windowsProc.running = true;
+            return;
+        }
         if (locating && !locateProc.running) {
             locateProc.asked = point;
             locateProc.exec([python, helper, "locate", runDir, String(point.x), String(point.y)]);
@@ -156,7 +162,7 @@ ShellRoot {
         const prompt = promptInput.text.trim();
         if (!prompt || phase === "sending" || !hasTarget)
             return;
-        if (phase !== "ready" || finding || !windowsReady) {
+        if (phase !== "ready" || finding) {
             sendQueued = true;
             return;
         }
@@ -353,7 +359,7 @@ ShellRoot {
                     result.saveToFile(root.runDir + "/screen.png");
                     root.screenSaved = true;
                     root.phase = "ready";
-                    windowsProc.running = true;
+                    root.pump();
                     root.focusInput();
                 });
             }

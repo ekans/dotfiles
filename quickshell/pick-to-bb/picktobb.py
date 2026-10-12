@@ -9,9 +9,10 @@
   picktobb.py send-shot RUN_DIR MODE PROMPT X Y W H  start a bb thread with a screenshot
 
 `start` keeps the output in RUN_DIR/output.json; the overlay then writes
-RUN_DIR/screen.png (the frozen output) and runs `windows`, which keeps niri's
-windows and their captures in RUN_DIR/windows.json. `locate` prints its result
-as JSON and keeps it in RUN_DIR/located.json, which `send` reads.
+RUN_DIR/screen.png (the frozen output) and, on the first element or window
+click, runs `windows`, which keeps niri's windows and their captures in
+RUN_DIR/windows.json. `locate` prints its result as JSON and keeps it in
+RUN_DIR/located.json, which `send` reads.
 
 The screenshot skips the element: MODE is `region` (X Y W H framed on the
 frozen output), `window` (the last `window-at`) or `screen`.
@@ -539,8 +540,9 @@ def windows(run_dir):
     """Capture every window that can be on the frozen output (its active
     workspace's) and find where each one is on it.
 
-    Done once, right after the freeze, so the captures match it, and in the
-    background, so a click only has to look the window up.
+    Done once, on the first click that needs it, so later clicks only look
+    the window up. Not sooner: each capture is a niri screenshot, with its
+    notification and its clipboard history entry.
     """
     output = load_json(os.path.join(run_dir, "output.json"))
     active = {w["id"] for w in niri_json("workspaces") if w["output"] == output["name"] and w["is_active"]}
