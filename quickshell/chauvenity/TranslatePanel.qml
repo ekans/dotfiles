@@ -45,7 +45,7 @@ PanelWindow {
     exclusiveZone: 0
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "chauvenity-translate"
-    WlrLayershell.keyboardFocus: panel.visible && panel.translator.wantsKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: overlayFocus.keyboardFocus
     color: "transparent"
     // niri blurs the wallpaper behind the panel ("xray"); a layer-rule
     // with `background-effect { xray false; }` blurs the windows instead.
@@ -127,6 +127,13 @@ PanelWindow {
     onVisibleChanged: {
         if (panel.visible)
             Qt.callLater(panel.takeKeys);
+    }
+
+    // Lets an overlay opened over this one take the keyboard (OverlayFocus.qml).
+    OverlayFocus {
+        id: overlayFocus
+        name: "chauvenity-translate"
+        open: panel.visible && panel.translator.wantsKeys
     }
 
     Connections {

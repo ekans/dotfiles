@@ -200,6 +200,13 @@ ShellRoot {
         }
     }
 
+    // Lets an overlay opened over this one take the keyboard (OverlayFocus.qml).
+    OverlayFocus {
+        id: overlayFocus
+        name: "bb-new"
+        open: root.open
+    }
+
     // Lets pick-to-bb (Mod+Shift+A) describe the overlay's elements.
     PickInspector {
         roots: [overlay]
@@ -467,7 +474,7 @@ ShellRoot {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "bb-new"
-        WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: overlayFocus.keyboardFocus
         color: "transparent"
         // niri blurs the wallpaper behind the card ("xray"); a layer-rule
         // with `background-effect { xray false; }` blurs the windows instead.
