@@ -6,6 +6,10 @@ pragma ComponentBehavior: Bound
 // keyboard to types into it.
 //
 // Prototype "08 · Just dots".
+//
+// The login greeter (../chauvenity-greeter) draws this same face, with its own
+// state object as `lock`: one that never has a fingerprint ("unavailable"), and
+// that keeps the dots on screen, green, while the session starts.
 
 import QtQuick
 import QtQuick.Shapes
@@ -16,6 +20,10 @@ Item {
 
     // shell.qml's root: the palette and the state below.
     required property var lock
+    // Off for the greeter, which has no desktop to fade to.
+    property bool fadeOnUnlock: true
+    // Off while something else, such as the greeter's power menu, takes the keys.
+    property bool inputEnabled: true
 
     // Sizes are the prototype's, drawn at 1280 × 800 and scaled with the
     // output.
@@ -33,7 +41,7 @@ Item {
         opacity: 0
         focus: true
         echoMode: TextInput.Password
-        readOnly: face.checking || face.unlocked
+        readOnly: face.checking || face.unlocked || !face.inputEnabled
         onTextEdited: face.lock.edit(input.text)
         onAccepted: face.lock.submit()
         Keys.onEscapePressed: face.lock.edit("")
@@ -55,7 +63,7 @@ Item {
     Item {
         id: content
         anchors.fill: parent
-        opacity: face.unlocked ? 0 : 1
+        opacity: face.unlocked && face.fadeOnUnlock ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.InQuad } }
 
         Text {
