@@ -22,6 +22,8 @@ Item {
     // `ipc call bar toggle` takes, and the letter it asks for.
     property string hintName: "clock"
     property string hintKey: "t"
+    // The time alone.
+    property bool compact: false
     required property date now
     // shell.qml's calendar feed.
     required property var calendar
@@ -51,6 +53,7 @@ Item {
         }
 
         Text {
+            visible: !clk.compact
             anchors.horizontalCenter: parent.horizontalCenter
             text: Qt.formatDateTime(clk.now, "ddd d MMM") + " · W" + Clock.isoWeek(clk.now).week
             color: clk.theme.dimColor

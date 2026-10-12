@@ -26,6 +26,8 @@ Item {
     // `ipc call bar toggle` takes, and the letter it asks for.
     property string hintName: "network"
     property string hintKey: "n"
+    // Icon only.
+    property bool compact: false
 
     readonly property var devices: Networking.devices.values
     // The first Wi-Fi card; a laptop has one.
@@ -77,7 +79,7 @@ Item {
         }
 
         Text {
-            visible: net.look.label !== ""
+            visible: !net.compact && net.look.label !== ""
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, 110)
             elide: Text.ElideRight

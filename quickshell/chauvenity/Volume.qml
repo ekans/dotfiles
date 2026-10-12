@@ -24,6 +24,8 @@ Item {
     // `ipc call bar toggle` takes, and the letter it asks for.
     property string hintName: "volume"
     property string hintKey: "v"
+    // Icon only.
+    property bool compact: false
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property bool ready: !!(vol.sink && vol.sink.audio)
@@ -56,6 +58,7 @@ Item {
         }
 
         PeakMeter {
+            visible: !vol.compact
             anchors.verticalCenter: parent.verticalCenter
             theme: vol.theme
             sink: vol.sink
@@ -64,6 +67,7 @@ Item {
 
         Text {
             id: levelText
+            visible: !vol.compact
             anchors.verticalCenter: parent.verticalCenter
             // As wide as "100%", whatever the level.
             width: widest.advanceWidth
