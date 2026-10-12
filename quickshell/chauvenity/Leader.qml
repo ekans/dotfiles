@@ -67,6 +67,13 @@ Scope {
     readonly property var page: Lead.pageAt(Menu.MENU, leader.path, leader.barItems) ?? { entry: null, entries: [] }
     readonly property string crumb: ["SPC"].concat(leader.path).join(" ")
 
+    // Lets an overlay opened over this one take the keyboard (OverlayFocus.qml).
+    OverlayFocus {
+        id: overlayFocus
+        name: "chauvenity-leader"
+        open: leader.open
+    }
+
     IpcHandler {
         target: "leader"
 
@@ -278,7 +285,7 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "chauvenity-leader"
-        WlrLayershell.keyboardFocus: leader.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: overlayFocus.keyboardFocus
         color: "transparent"
         // Clicks go through while the strip is down, and around it once up.
         mask: Region {

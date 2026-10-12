@@ -53,6 +53,13 @@ Scope {
     // A file at a time, as resolveBinds asks for it: a handful of small files,
     // read in well under a frame.
 
+    // Lets an overlay opened over this one take the keyboard (OverlayFocus.qml).
+    OverlayFocus {
+        id: overlayFocus
+        name: "chauvenity-keys"
+        open: panel.open
+    }
+
     FileView {
         id: reader
         blockAllReads: true
@@ -196,7 +203,7 @@ Scope {
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "chauvenity-keys"
-        WlrLayershell.keyboardFocus: panel.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: overlayFocus.keyboardFocus
         color: "transparent"
         // niri blurs the wallpaper behind the card ("xray"); a layer-rule
         // with `background-effect { xray false; }` blurs the windows instead.
