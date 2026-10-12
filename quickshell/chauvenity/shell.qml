@@ -28,6 +28,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Widgets
 import Quickshell.Services.Pipewire
 import "calendar.mjs" as Cal
 import "claude-pace.mjs" as Pace
@@ -683,25 +684,53 @@ ShellRoot {
                 }
             }
 
-            // Centre: title of the focused window; none on an empty workspace.
-            Text {
-                anchors.centerIn: parent
-                // Centred, so it stops as far from the centre as the right
-                // items' left edge, less a gap: a long title is cut short
-                // rather than run under them.
-                width: Math.max(0, Math.min(implicitWidth, bar.width * 0.4,
-                                            2 * (rightItems.x - bar.width / 2 - 16)))
-                elide: Text.ElideRight
-                horizontalAlignment: Text.AlignHCenter
-                // Any client sets its own title. AutoText would render markup
-                // in it, <img src="https://…"> included, and fetch that URL.
-                textFormat: Text.PlainText
-                text: ToplevelManager.activeToplevel?.title ?? ""
-                color: root.dimColor
-                font.pixelSize: 12
+            // Centre: the focused window's icon and title; none on an empty
+            // workspace.
+            Item {
+                id: centre
+
+                readonly property var toplevel: ToplevelManager.activeToplevel
+                readonly property var entry: centre.toplevel ? DesktopEntries.heuristicLookup(centre.toplevel.appId) : null
+                readonly property string iconPath: centre.entry ? Quickshell.iconPath(centre.entry.icon, true) : ""
+                readonly property real iconSlot: centre.iconPath !== "" ? 14 + row.spacing : 0
+                // Between the workspaces and the right items, less a gap.
+                readonly property real lo: workspacesRow.x + workspacesRow.width + 16
+                readonly property real hi: rightItems.x - 16
+
+                visible: titleText.text !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, Math.min(centre.iconSlot + titleText.implicitWidth, centre.hi - centre.lo))
+                height: row.height
+                // Centred when it fits, else slid left to stop short of the
+                // right items.
+                x: Math.min(Math.max(bar.width / 2 - centre.width / 2, centre.lo), centre.hi - centre.width)
                 // Gives way to the notification island on this output.
                 opacity: notificationIsland.shown && notificationIsland.screenName === bar.modelData.name ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                Row {
+                    id: row
+                    spacing: 6
+
+                    IconImage {
+                        visible: centre.iconPath !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitSize: 14
+                        source: centre.iconPath
+                    }
+
+                    Text {
+                        id: titleText
+                        width: Math.max(0, centre.width - centre.iconSlot)
+                        elide: Text.ElideRight
+                        // Any client sets its own title. AutoText would render markup
+                        // in it, <img src="https://…"> included, and fetch that URL.
+                        textFormat: Text.PlainText
+                        text: centre.toplevel?.title ?? ""
+                        color: root.dimColor
+                        font.pixelSize: 12
+                    }
+                }
             }
 
             // Right: Claude Code usage, network, volume, battery, caffeine,
