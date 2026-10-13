@@ -440,9 +440,22 @@ ShellRoot {
     // lid or `systemctl suspend` still locks and suspends, and a crashed bar
     // drops the inhibitor with it. Off again at every start of the bar.
     //
-    //     qs -c chauvenity ipc call bar toggle caffeine
+    // The cup shows only while it is on, so a click or its hint can turn it
+    // off but not on; the leader menu's `c` and this can do both:
+    //
+    //     qs -c chauvenity ipc call caffeine toggle
 
     property bool caffeine: false
+
+    IpcHandler {
+        target: "caffeine"
+
+        // Answers with the new state, "on" or "off".
+        function toggle(): string {
+            root.caffeine = !root.caffeine;
+            return root.caffeine ? "on" : "off";
+        }
+    }
 
     // --- notifications ------------------------------------------------------
     // This shell is the notification server. They show one at a time in an

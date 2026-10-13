@@ -1,6 +1,7 @@
 // The bar's caffeine toggle: a cup, steaming and lit while the session is
-// kept awake. No panel; a click flips it. The idle inhibitor it drives lives
-// in each bar in shell.qml, so that every output's bar holds one.
+// kept awake, and gone while it is not. No panel; a click turns it off. The
+// idle inhibitor it drives lives in each bar in shell.qml, so that every
+// output's bar holds one.
 
 import QtQuick
 
@@ -15,6 +16,7 @@ Item {
 
     signal flipped()
 
+    visible: cup.on
     implicitWidth: icon.implicitWidth + 12
     implicitHeight: 22
 
@@ -29,7 +31,7 @@ Item {
         anchors.centerIn: parent
         theme: cup.theme
         on: cup.on
-        ink: cup.on ? cup.theme.accentColor : cup.theme.dimColor
+        ink: cup.theme.accentColor
     }
 
     // A click, the bar's hints and `qs -c chauvenity ipc call bar toggle
