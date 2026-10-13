@@ -62,14 +62,6 @@ Scope {
         }
     }
 
-    Connections {
-        target: island.service
-        function onRenewed(n) {
-            if (n === island.n && island.out)
-                island.startDrain();
-        }
-    }
-
     onNChanged: {
         if (!island.n)
             island.out = false;

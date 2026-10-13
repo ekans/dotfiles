@@ -33,6 +33,8 @@ test("plainText: plain text that only looks like markup stays", () => {
     assert.equal(plainText("Re: <urgent> fix"), "Re: <urgent> fix");
     assert.equal(plainText("<abbr>ok</abbr>"), "<abbr>ok</abbr>");
     assert.equal(plainText("<U>under</U> <A HREF='x'>a</A>"), "under a");
+    assert.equal(plainText('<span foreground="red">Hi</span> <strong>there</strong>'), "Hi there");
+    assert.equal(plainText("one</br>two"), "one\ntwo");
 });
 
 test("plainText: a character reference past Unicode stays as written", () => {

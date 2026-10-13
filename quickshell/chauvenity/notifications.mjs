@@ -11,12 +11,12 @@ const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'" };
 
 // A body as plain text. The server does not advertise markup, but some apps
 // send it anyway; shown as markup, an <img src="https://…"> in it would be
-// fetched. Line breaks survive, and the tags of the spec's markup go. Other
-// <…> is text, as in "Bob <bob@example.com>".
+// fetched. Line breaks survive, and the tags of the spec's markup and of
+// Pango's go. Other <…> is text, as in "Bob <bob@example.com>".
 export function plainText(text) {
     return String(text ?? "")
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/?(?:a|b|i|u|img)(?:\s[^>]*)?\/?>/gi, "")
+        .replace(/<\/?br\s*\/?>/gi, "\n")
+        .replace(/<\/?(?:a|b|i|u|s|img|span|big|small|sub|sup|tt|p|em|strong)(?:\s[^>]*)?\/?>/gi, "")
         .replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (whole, name) => {
             if (name[0] === "#") {
                 const code = name[1] === "x" || name[1] === "X"

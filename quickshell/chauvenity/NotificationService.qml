@@ -46,8 +46,6 @@ Scope {
         property real seenAt: 0
     }
 
-    signal renewed(var n)
-
     function arrivedAt(n) {
         return service.arrivals[n?.id] ?? null;
     }
@@ -106,22 +104,25 @@ Scope {
         persist.arrivals = JSON.stringify(Object.assign({}, service.arrivals, { [n.id]: Date.now() }));
     }
 
-    // The app sent it again with the same id: new again, and up again.
+    // The app sent it again with the same id: new again, and up again
+    // unless it is up already, where its time runs on so that a progress
+    // notification does not hold the island.
     function replaced(n) {
         if (!(n?.id in service.arrivals))
             return;
         service.stamp(n);
-        if (service.current === n)
-            service.renewed(n);
-        else if (!service.queue.includes(n) && Notes.popsUp(n.urgency, service.dnd))
+        if (service.current !== n && !service.queue.includes(n) && Notes.popsUp(n.urgency, service.dnd))
             service.enqueue(n);
     }
 
     function arrived(n) {
         const popsUp = !n.lastGeneration && Notes.popsUp(n.urgency, service.dnd);
-        // Untracked, the server drops it once this returns.
-        if (n.transient && !popsUp)
+        // Untracked, the server drops it once this returns, and tells the
+        // app it expired rather than that the user dismissed it.
+        if (n.transient && !popsUp) {
+            n.expire();
             return;
+        }
         n.tracked = true;
         if (!(n.lastGeneration && n.id in service.arrivals))
             service.stamp(n);
