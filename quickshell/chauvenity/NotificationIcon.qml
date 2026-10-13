@@ -40,7 +40,7 @@ ClippingRectangle {
     Text {
         anchors.centerIn: parent
         visible: !icon.loaded
-        text: (icon.notification?.appName ?? "?").slice(0, 1).toUpperCase()
+        text: (icon.notification?.appName || "?").slice(0, 1).toUpperCase()
         color: icon.theme.fgColor
         font.pixelSize: Math.round(icon.size * 0.45)
         font.bold: true

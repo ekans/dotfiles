@@ -27,6 +27,22 @@ test("plainText: drops markup, keeps line breaks, decodes entities", () => {
     assert.equal(plainText(undefined), "");
 });
 
+test("plainText: plain text that only looks like markup stays", () => {
+    assert.equal(plainText("Bob <bob@example.com>"), "Bob <bob@example.com>");
+    assert.equal(plainText("if x < 3 and y > 2"), "if x < 3 and y > 2");
+    assert.equal(plainText("Re: <urgent> fix"), "Re: <urgent> fix");
+    assert.equal(plainText("<abbr>ok</abbr>"), "<abbr>ok</abbr>");
+    assert.equal(plainText("<U>under</U> <A HREF='x'>a</A>"), "under a");
+    assert.equal(plainText('<span foreground="red">Hi</span> <strong>there</strong>'), "Hi there");
+    assert.equal(plainText("one</br>two"), "one\ntwo");
+});
+
+test("plainText: a character reference past Unicode stays as written", () => {
+    assert.equal(plainText("&#99999999; tail"), "&#99999999; tail");
+    assert.equal(plainText("&#xFFFFFFF;"), "&#xFFFFFFF;");
+    assert.equal(plainText("&#x1F600;"), "\u{1F600}");
+});
+
 test("firstLine: the first line with text in it", () => {
     assert.equal(firstLine("\n\n  hello \nworld"), "hello");
     assert.equal(firstLine("single"), "single");
@@ -34,10 +50,10 @@ test("firstLine: the first line with text in it", () => {
 });
 
 test("popupDuration: critical stays, the app's timeout is clamped, else by urgency", () => {
-    assert.equal(popupDuration(URGENCY.Critical, 5), 0);
-    assert.equal(popupDuration(URGENCY.Normal, 8), 8000);
-    assert.equal(popupDuration(URGENCY.Normal, 0.5), 3000);
-    assert.equal(popupDuration(URGENCY.Normal, 600), 20000);
+    assert.equal(popupDuration(URGENCY.Critical, 5000), 0);
+    assert.equal(popupDuration(URGENCY.Normal, 8000), 8000);
+    assert.equal(popupDuration(URGENCY.Normal, 500), 3000);
+    assert.equal(popupDuration(URGENCY.Normal, 600000), 20000);
     // -1 asks for the server's default, 0 for "never": a popup still goes,
     // the notification stays in the panel.
     assert.equal(popupDuration(URGENCY.Normal, -1), 6000);

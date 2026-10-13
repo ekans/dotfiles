@@ -144,7 +144,9 @@ Scope {
             top: true
         }
         implicitWidth: 460
-        implicitHeight: 240
+        // Room for the open pill and its overshoot, without resizing the
+        // surface every frame of the animation.
+        implicitHeight: Math.max(240, pill.y + full.implicitHeight + 24 + 16)
         color: "transparent"
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
@@ -196,9 +198,11 @@ Scope {
                         n.dismiss();
                         return;
                     }
-                    if (mouse.button === Qt.LeftButton)
-                        island.service.activate(n);
+                    // Put away first: the action may close it, which moves
+                    // the next one up, and hide() would fold that one.
                     island.hide();
+                    if (mouse.button === Qt.LeftButton)
+                        Notes.defaultAction(n.actions)?.invoke();
                 }
             }
 
@@ -330,8 +334,8 @@ Scope {
                             label: modelData.text
                             primary: true
                             onClicked: {
-                                modelData.invoke();
                                 island.hide();
+                                modelData.invoke();
                             }
                         }
                     }
