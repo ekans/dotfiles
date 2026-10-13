@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assignKeys, digitKey, hintTarget, workspaceKey } from "../hints.mjs";
+import { assignKeys, digitKey, hintTarget, keypadDigit, workspaceKey } from "../hints.mjs";
 
 const KEYS = ["c", "v", "b", "t"];
 
@@ -15,6 +15,15 @@ test("digitKey reads the number row by position and the keypad by text", () => {
     assert.equal(digitKey("", 89), 0); // Num Lock off: End
     assert.equal(digitKey("0", 19), 0);
     assert.equal(digitKey("m", 47), 0);
+});
+
+test("keypadDigit reads the keypad by position, whatever the keysym", () => {
+    const codes = { 87: 1, 88: 2, 89: 3, 83: 4, 84: 5, 85: 6, 79: 7, 80: 8, 81: 9 };
+    for (const [code, digit] of Object.entries(codes))
+        assert.equal(keypadDigit(Number(code)), digit);
+    assert.equal(keypadDigit(10), 0); // the number row's 1
+    assert.equal(keypadDigit(90), 0); // KP_0
+    assert.equal(keypadDigit(47), 0);
 });
 
 test("workspaceKey numbers the first nine workspaces only", () => {

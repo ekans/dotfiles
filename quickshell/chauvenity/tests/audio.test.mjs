@@ -5,17 +5,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    sinkKind, volumeTone, percent, stepVolume, streamLabel, unpluggedSinks, sinkLabel,
+    nodeKind, volumeTone, percent, stepVolume, streamLabel, unpluggedSinks, sinkLabel,
+    inputDevices, paVolume,
     stereoPeaks, meterStep, meterIdle, METER_IDLE, METER_FALL, METER_HOLD,
 } from "../audio.mjs";
 
-test("sinkKind tells the output devices apart", () => {
-    assert.equal(sinkKind("alsa_output.pci-0000_c1_00.6.HiFi__Speaker__sink", { "device.bus": "pci" }), "speaker");
-    assert.equal(sinkKind("alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink", {}), "headphones");
-    assert.equal(sinkKind("alsa_output.usb-foo", { "device.form-factor": "headset" }), "headphones");
-    assert.equal(sinkKind("bluez_output.EC_66_D1_B8_EB_DC.1", {}), "bluetooth");
-    assert.equal(sinkKind("raop_sink.Sejour.local.192.168.1.189.7000", {}), "network");
-    assert.equal(sinkKind(undefined, undefined), "speaker");
+test("nodeKind tells the audio devices apart", () => {
+    assert.equal(nodeKind("alsa_output.pci-0000_c1_00.6.HiFi__Speaker__sink", { "device.bus": "pci" }), "speaker");
+    assert.equal(nodeKind("alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink", {}), "headphones");
+    assert.equal(nodeKind("alsa_output.usb-foo", { "device.form-factor": "headset" }), "headphones");
+    assert.equal(nodeKind("bluez_output.EC_66_D1_B8_EB_DC.1", {}), "bluetooth");
+    assert.equal(nodeKind("raop_sink.Sejour.local.192.168.1.189.7000", {}), "network");
+    assert.equal(nodeKind("bluez_input.EC_66_D1_B8_EB_DC", {}), "bluetooth");
+    assert.equal(nodeKind("alsa_input.pci-0000_c1_00.6.HiFi__Mic2__source", { "device.bus": "pci" }), "speaker");
+    assert.equal(nodeKind("alsa_input.usb-046d_C922_Pro_Stream_Webcam", { "device.bus": "usb" }), "speaker");
+    assert.equal(nodeKind(undefined, undefined), "speaker");
 });
 
 test("volumeTone flags mute first, then overdrive", () => {
@@ -66,6 +70,136 @@ test("unpluggedSinks hides nothing when pactl's output is unreadable", () => {
     assert.deepEqual(unpluggedSinks(""), []);
     assert.deepEqual(unpluggedSinks("Connection failure"), []);
     assert.deepEqual(unpluggedSinks("{}"), []);
+});
+
+// `pactl -f json list sources`, cut down to what inputDevices reads.
+const channel = value => ({ value, value_percent: "", db: "" });
+const MIC = {
+    name: "alsa_input.pci-0000_c1_00.6.HiFi__Mic2__source",
+    description: "Ryzen HD Audio Controller Internal Stereo Microphone",
+    mute: false,
+    volume: { "front-left": channel(17990), "front-right": channel(17990) },
+    monitor_source: "",
+    ports: [{ name: "analog-input-internal-mic", availability: "availability unknown" }],
+    properties: { "media.class": "Audio/Source", "device.class": "sound", "device.bus": "pci" },
+};
+const VIRTUAL = {
+    name: "easyeffects_source",
+    description: "Easy Effects Source",
+    mute: true,
+    volume: { "front-left": channel(65536), "front-right": channel(65536) },
+    monitor_source: "",
+    ports: [],
+    properties: { "media.class": "Audio/Source/Virtual" },
+};
+const MONITOR = {
+    name: "alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink.monitor",
+    description: "Monitor of Ryzen HD Audio Controller Headphones",
+    mute: false,
+    volume: { "front-left": channel(65536), "front-right": channel(65536) },
+    monitor_source: "alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink",
+    ports: [{ name: "analog-output-headphones", availability: "available" }],
+    properties: { "media.class": "Audio/Sink", "device.class": "monitor", "device.bus": "pci" },
+};
+const UNPLUGGED = {
+    name: "alsa_input.pci-0000_c1_00.6.HiFi__Mic1__source",
+    description: "Ryzen HD Audio Controller Digital Microphone",
+    mute: false,
+    volume: { "front-left": channel(52803), "front-right": channel(52803) },
+    monitor_source: "",
+    ports: [{ name: "dmic", availability: "not available" }],
+    properties: { "media.class": "Audio/Source", "device.class": "sound", "device.bus": "pci" },
+};
+const UNEQUAL = {
+    name: "alsa_input.usb-046d_C922_Pro_Stream_Webcam_39C895FF-02.analog-stereo",
+    description: "C922 Pro Stream Webcam Analog Stereo",
+    mute: false,
+    volume: { "front-left": channel(32768), "front-right": channel(65536) },
+    monitor_source: "",
+    ports: [{ name: "analog-input-mic", availability: "availability unknown" }],
+    properties: { "media.class": "Audio/Source", "device.class": "sound", "device.bus": "usb" },
+};
+const SOURCES = JSON.stringify([MONITOR, UNEQUAL, UNPLUGGED, MIC, VIRTUAL]);
+const names = devices => devices.map(d => d.name);
+
+test("inputDevices lists the microphones, a virtual source included, in pactl's order", () => {
+    const { current, shown } = inputDevices(SOURCES, MIC.name);
+    assert.deepEqual(names(shown), [UNEQUAL.name, MIC.name, VIRTUAL.name]);
+    assert.equal(current.name, MIC.name);
+});
+
+test("inputDevices describes a device the way the picker and the head row show it", () => {
+    const { shown } = inputDevices(SOURCES, MIC.name);
+    assert.deepEqual(shown[1], {
+        name: "alsa_input.pci-0000_c1_00.6.HiFi__Mic2__source",
+        label: "Ryzen Internal Stereo Microphone",
+        kind: "speaker",
+        volume: 17990 / 65536,
+        muted: false,
+        monitor: false,
+    });
+    assert.deepEqual(shown[2], {
+        name: "easyeffects_source",
+        label: "Easy Effects Source",
+        kind: "speaker",
+        volume: 1,
+        muted: true,
+        monitor: false,
+    });
+});
+
+test("inputDevices levels a device at the mean of its channels", () => {
+    const { shown } = inputDevices(SOURCES, MIC.name);
+    assert.equal(shown[0].volume, 0.75);
+});
+
+test("inputDevices hides a monitor and an unplugged microphone", () => {
+    const { shown } = inputDevices(SOURCES, MIC.name);
+    assert.ok(!names(shown).includes(MONITOR.name));
+    assert.ok(!names(shown).includes(UNPLUGGED.name));
+});
+
+test("inputDevices keeps a monitor that is the default, as itself", () => {
+    const { current, shown } = inputDevices(SOURCES, MONITOR.name);
+    assert.deepEqual(current, {
+        name: "alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink.monitor",
+        label: "Monitor of Ryzen Headphones",
+        kind: "headphones",
+        volume: 1,
+        muted: false,
+        monitor: true,
+    });
+    assert.deepEqual(names(shown), [MONITOR.name, UNEQUAL.name, MIC.name, VIRTUAL.name]);
+});
+
+test("inputDevices keeps an unplugged microphone that is the default", () => {
+    const { current, shown } = inputDevices(SOURCES, UNPLUGGED.name);
+    assert.equal(current.name, UNPLUGGED.name);
+    assert.deepEqual(names(shown), [UNEQUAL.name, UNPLUGGED.name, MIC.name, VIRTUAL.name]);
+});
+
+test("inputDevices has no current when the default is not a source", () => {
+    assert.equal(inputDevices(SOURCES, "").current, null);
+    assert.equal(inputDevices(SOURCES, "gone").current, null);
+    assert.equal(names(inputDevices(SOURCES, "gone").shown).length, 3);
+});
+
+test("inputDevices shows nothing when pactl's output is unreadable", () => {
+    assert.deepEqual(inputDevices("", MIC.name), { current: null, shown: [] });
+    assert.deepEqual(inputDevices("Connection failure", MIC.name), { current: null, shown: [] });
+    assert.deepEqual(inputDevices("{}", MIC.name), { current: null, shown: [] });
+});
+
+test("inputDevices reads a source with no channels as silent", () => {
+    const bare = JSON.stringify([{ ...MIC, volume: {} }]);
+    assert.equal(inputDevices(bare, MIC.name).current.volume, 0);
+});
+
+test("paVolume is the raw integer pactl takes", () => {
+    assert.equal(paVolume(0.27), 17695);
+    assert.equal(paVolume(1), 65536);
+    assert.equal(paVolume(0), 0);
+    assert.equal(paVolume(-1), 0);
 });
 
 test("sinkLabel shortens the chip and the HDMI port", () => {

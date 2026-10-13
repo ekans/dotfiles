@@ -8,13 +8,16 @@
 export const WHEEL_MAX = 1.0;
 export const WHEEL_STEP = 0.05;
 
-// Which glyph a sink gets, from its PipeWire node name and properties.
-// Headphones on a UCM card ("HiFi") are their own sink named after the
-// route, so the name alone tells them from the speaker.
-export function sinkKind(name, props) {
+// Which glyph a sink or source gets, from its PipeWire node name and
+// properties. Headphones on a UCM card ("HiFi") are their own sink named after
+// the route, so the name alone tells them from the speaker. A source with
+// nothing to tell it apart answers "speaker" too: AudioIcon draws a
+// microphone for an input whatever the kind, and only reads the kind for its
+// badge.
+export function nodeKind(name, props) {
     const p = props || {};
     const n = name || "";
-    if (n.startsWith("bluez_output.") || p["device.bus"] === "bluetooth")
+    if (n.startsWith("bluez_output.") || n.startsWith("bluez_input.") || p["device.bus"] === "bluetooth")
         return "bluetooth";
     if (n.startsWith("raop_sink.") || n.startsWith("tunnel.") || p["device.bus"] === "network")
         return "network";
@@ -53,27 +56,80 @@ export function streamLabel(props, description, name) {
     return p["application.name"] || p["media.name"] || description || name || "unknown";
 }
 
-// The sinks nothing is plugged into, from `pactl -f json list sinks`: every
-// port says "not available" — the GPU's HDMI / DisplayPort outputs with no
-// monitor (or a monitor without speakers) behind them. A port PipeWire can't
-// probe says "availability unknown" and counts as plugged. Unreadable output
-// hides nothing.
-export function unpluggedSinks(pactlJson) {
-    let sinks;
+// A pactl device with ports whose every one says "not available": the GPU's
+// HDMI / DisplayPort outputs with no monitor (or a monitor without speakers)
+// behind them. A port PipeWire can't probe says "availability unknown" and
+// counts as plugged, as does a device with no ports at all.
+function isUnplugged(device) {
+    return !!device && Array.isArray(device.ports) && device.ports.length > 0
+        && device.ports.every(p => p && p.availability === "not available");
+}
+
+// The device list of `pactl -f json list sinks|sources`, or [] when the
+// output is not one.
+function parseDevices(pactlJson) {
     try {
-        sinks = JSON.parse(pactlJson);
+        const devices = JSON.parse(pactlJson);
+        return Array.isArray(devices) ? devices : [];
     } catch (e) {
         return [];
     }
-    if (!Array.isArray(sinks)) return [];
-    return sinks
-        .filter(s => s && Array.isArray(s.ports) && s.ports.length > 0
-            && s.ports.every(p => p && p.availability === "not available"))
-        .map(s => s.name);
 }
 
-// A sink's name in the panel, short enough not to be cut off: the chip
-// without "High Definition Audio Controller", the port as "HDMI/DP n".
+// The sinks nothing is plugged into, from `pactl -f json list sinks`.
+// Unreadable output hides nothing.
+export function unpluggedSinks(pactlJson) {
+    return parseDevices(pactlJson).filter(isUnplugged).map(s => s.name);
+}
+
+// pactl's JSON gives each channel's volume on the same cubic scale as the
+// panel's sliders, 65536 being 100 %.
+const PA_VOLUME_NORM = 65536;
+
+// The inputs of the panel, from `pactl -f json list sources` and the name
+// `pactl get-default-source` printed: `current`, the default, and `shown`,
+// the ones the picker lists, each `{ name, label, kind, volume, muted,
+// monitor }`. The input side reads pactl rather than Quickshell's nodes
+// because pulse sees what they don't: a virtual source (EasyEffects), a sink's
+// monitor as a source with its own level and mute, and a port nothing is
+// plugged into. A monitor records what a sink plays, so it is never offered,
+// and neither is a microphone nothing is plugged into; either is still
+// `current` and listed while it is the default. Unreadable output shows
+// nothing.
+export function inputDevices(sourcesJson, defaultName) {
+    const devices = parseDevices(sourcesJson)
+        .filter(d => d && typeof d.name === "string")
+        .map(d => {
+            const channels = Object.values(d.volume || {}).map(c => (c && c.value) || 0);
+            const mean = channels.length > 0 ? channels.reduce((a, b) => a + b, 0) / channels.length : 0;
+            return {
+                device: {
+                    name: d.name,
+                    label: sinkLabel(d.description, d.name),
+                    kind: nodeKind(d.name, d.properties),
+                    volume: mean / PA_VOLUME_NORM,
+                    muted: !!d.mute,
+                    monitor: !!d.monitor_source,
+                },
+                offered: !d.monitor_source && !isUnplugged(d),
+            };
+        });
+    const current = devices.find(d => d.device.name === defaultName);
+    return {
+        current: current ? current.device : null,
+        shown: devices.filter(d => d.offered || d === current).map(d => d.device),
+    };
+}
+
+// The integer `pactl set-source-volume` takes for a panel level. Not a
+// decimal: pactl reads that as a linear amplitude factor, a different scale
+// from the cubic one the panel and its raw values share.
+export function paVolume(volume) {
+    return Math.max(0, Math.round(volume * PA_VOLUME_NORM));
+}
+
+// A sink's or source's name in the panel, short enough not to be cut off: the
+// chip without "High Definition Audio Controller", the port as "HDMI/DP n".
 export function sinkLabel(description, name) {
     const d = description || name || "unknown";
     return d
