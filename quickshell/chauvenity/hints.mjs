@@ -10,6 +10,10 @@ const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 // follow it.
 const DIGIT_ROW_ONE = 10;
 
+// The xkb keycodes of the keypad's 1 … 9, in that order (evdev KEY_KP1 …
+// plus 8: the keypad's rows run 7 8 9, 4 5 6, 1 2 3 from the top).
+const KEYPAD_DIGITS = [87, 88, 89, 83, 84, 85, 79, 80, 81];
+
 // A bar's first nine workspaces get 1–9, in the order the bar lists them,
 // as niri's Mod+1 … Mod+9 count them.
 export function workspaceKey(position) {
@@ -83,6 +87,15 @@ export function digitKey(text, scanCode) {
     if (scanCode >= DIGIT_ROW_ONE && scanCode < DIGIT_ROW_ONE + 9)
         return scanCode - DIGIT_ROW_ONE + 1;
     return 0;
+}
+
+// The digit 1–9 of a keypad key by its xkb keycode, or 0. With Shift held the
+// keypad types its navigation keys whatever Num Lock says, so Shift+KP_2
+// arrives as Down with no text: only the position still says which digit it
+// is.
+export function keypadDigit(scanCode) {
+    const at = KEYPAD_DIGITS.indexOf(scanCode);
+    return at < 0 ? 0 : at + 1;
 }
 
 // What a key press picks: `{ workspace: position }`, `{ key: letter }`, or

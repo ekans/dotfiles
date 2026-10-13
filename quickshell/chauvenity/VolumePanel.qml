@@ -62,8 +62,15 @@ Item {
     function keyPressed(event) {
         const direction = event.modifiers & Qt.ShiftModifier ? panel.input : panel.output;
         const audio = direction.node ? direction.node.audio : null;
-        const digit = Hints.digitKey(event.text, event.nativeScanCode);
-        if (event.key === Qt.Key_Up || event.key === Qt.Key_Right) {
+        // Shift on the keypad types its navigation keys, so the digit comes
+        // from the key's position, before the arrows are asked.
+        const shiftedKeypad = (event.modifiers & Qt.ShiftModifier) && (event.modifiers & Qt.KeypadModifier);
+        const digit = shiftedKeypad ? Hints.keypadDigit(event.nativeScanCode)
+            : Hints.digitKey(event.text, event.nativeScanCode);
+        if (digit > 0) {
+            if (digit <= direction.nodes.length)
+                direction.pick(direction.nodes[digit - 1]);
+        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Right) {
             if (audio)
                 audio.volume = Audio.stepVolume(audio.volume, 1);
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Left) {
@@ -72,9 +79,6 @@ Item {
         } else if (event.key === Qt.Key_M) {
             if (audio)
                 audio.muted = !audio.muted;
-        } else if (digit > 0) {
-            if (digit <= direction.nodes.length)
-                direction.pick(direction.nodes[digit - 1]);
         } else {
             return false;
         }
