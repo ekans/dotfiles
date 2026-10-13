@@ -1,0 +1,7 @@
+# The wallpaper (quickshell/chauvenity/Wallpaper.qml), downloaded once rather
+# than kept in git. "Mr. Goatee's Tongue" by OakleyOriginals, CC BY 2.0
+# (https://creativecommons.org/licenses/by/2.0/), from
+# https://commons.wikimedia.org/wiki/File:Mr._Goatee%27s_Tongue_-_3067341182.jpg
+[".local/share/wallpapers/mr-goatee.jpg"]
+    type = "file"
+    url = "https://upload.wikimedia.org/wikipedia/commons/3/34/Mr._Goatee%27s_Tongue_-_3067341182.jpg"

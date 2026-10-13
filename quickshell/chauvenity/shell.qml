@@ -497,6 +497,9 @@ ShellRoot {
         }
     }
 
+    // --- the wallpaper ------------------------------------------------------
+    Wallpaper {}
+
     // --- the bar ------------------------------------------------------------
 
     // Lets pick-to-bb (Mod+Shift+A) describe bar and popup elements.

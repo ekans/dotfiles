@@ -64,3 +64,15 @@ binds {
     // mode, w word, p paragraph, f fix. Lives in ~/.config/quickshell/chauvenity.
     Mod+E hotkey-overlay-title="Translate or fix the selection" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "translate" "choose"; }
 }
+
+// The wallpaper is the bar's own (~/.config/quickshell/chauvenity,
+// Wallpaper.qml), on the background layer. In the backdrop it stays still
+// while workspaces slide and shows in the overview; the workspace background
+// is transparent so it does not paint over it.
+layer-rule {
+    match namespace="^wallpaper$"
+    place-within-backdrop true
+}
+layout {
+    background-color "transparent"
+}
