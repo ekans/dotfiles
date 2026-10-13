@@ -47,8 +47,8 @@ PanelWindow {
     WlrLayershell.namespace: "chauvenity-translate"
     WlrLayershell.keyboardFocus: overlayFocus.keyboardFocus
     color: "transparent"
-    // niri blurs the wallpaper behind the panel ("xray"); a layer-rule
-    // with `background-effect { xray false; }` blurs the windows instead.
+    // niri blurs the windows behind the panel: niri/config.kdl turns
+    // xray off for the overlay layer.
     BackgroundEffect.blurRegion: Region {
         item: sheet
         radius: sheet.radius

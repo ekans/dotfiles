@@ -289,8 +289,8 @@ ShellRoot {
         WlrLayershell.namespace: "bb-go"
         WlrLayershell.keyboardFocus: overlayFocus.keyboardFocus
         color: "transparent"
-        // niri blurs the wallpaper behind the card ("xray"); a layer-rule
-        // with `background-effect { xray false; }` blurs the windows instead.
+        // niri blurs the windows behind the card: niri/config.kdl turns
+        // xray off for the overlay layer.
         BackgroundEffect.blurRegion: Region {
             item: card
             radius: card.radius
