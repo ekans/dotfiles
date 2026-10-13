@@ -5,17 +5,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    sinkKind, volumeTone, percent, stepVolume, streamLabel, unpluggedSinks, sinkLabel,
+    nodeKind, volumeTone, percent, stepVolume, streamLabel, unpluggedSinks, sinkLabel,
     stereoPeaks, meterStep, meterIdle, METER_IDLE, METER_FALL, METER_HOLD,
 } from "../audio.mjs";
 
-test("sinkKind tells the output devices apart", () => {
-    assert.equal(sinkKind("alsa_output.pci-0000_c1_00.6.HiFi__Speaker__sink", { "device.bus": "pci" }), "speaker");
-    assert.equal(sinkKind("alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink", {}), "headphones");
-    assert.equal(sinkKind("alsa_output.usb-foo", { "device.form-factor": "headset" }), "headphones");
-    assert.equal(sinkKind("bluez_output.EC_66_D1_B8_EB_DC.1", {}), "bluetooth");
-    assert.equal(sinkKind("raop_sink.Sejour.local.192.168.1.189.7000", {}), "network");
-    assert.equal(sinkKind(undefined, undefined), "speaker");
+test("nodeKind tells the audio devices apart", () => {
+    assert.equal(nodeKind("alsa_output.pci-0000_c1_00.6.HiFi__Speaker__sink", { "device.bus": "pci" }), "speaker");
+    assert.equal(nodeKind("alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink", {}), "headphones");
+    assert.equal(nodeKind("alsa_output.usb-foo", { "device.form-factor": "headset" }), "headphones");
+    assert.equal(nodeKind("bluez_output.EC_66_D1_B8_EB_DC.1", {}), "bluetooth");
+    assert.equal(nodeKind("raop_sink.Sejour.local.192.168.1.189.7000", {}), "network");
+    assert.equal(nodeKind("bluez_input.EC_66_D1_B8_EB_DC", {}), "bluetooth");
+    assert.equal(nodeKind("alsa_input.pci-0000_c1_00.6.HiFi__Mic2__source", { "device.bus": "pci" }), "speaker");
+    assert.equal(nodeKind("alsa_input.usb-046d_C922_Pro_Stream_Webcam", { "device.bus": "usb" }), "speaker");
+    assert.equal(nodeKind(undefined, undefined), "speaker");
 });
 
 test("volumeTone flags mute first, then overdrive", () => {

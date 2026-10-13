@@ -8,13 +8,16 @@
 export const WHEEL_MAX = 1.0;
 export const WHEEL_STEP = 0.05;
 
-// Which glyph a sink gets, from its PipeWire node name and properties.
-// Headphones on a UCM card ("HiFi") are their own sink named after the
-// route, so the name alone tells them from the speaker.
-export function sinkKind(name, props) {
+// Which glyph a sink or source gets, from its PipeWire node name and
+// properties. Headphones on a UCM card ("HiFi") are their own sink named after
+// the route, so the name alone tells them from the speaker. A source with
+// nothing to tell it apart answers "speaker" too: AudioIcon draws a
+// microphone for an input whatever the kind, and only reads the kind for its
+// badge.
+export function nodeKind(name, props) {
     const p = props || {};
     const n = name || "";
-    if (n.startsWith("bluez_output.") || p["device.bus"] === "bluetooth")
+    if (n.startsWith("bluez_output.") || n.startsWith("bluez_input.") || p["device.bus"] === "bluetooth")
         return "bluetooth";
     if (n.startsWith("raop_sink.") || n.startsWith("tunnel.") || p["device.bus"] === "network")
         return "network";
@@ -72,8 +75,8 @@ export function unpluggedSinks(pactlJson) {
         .map(s => s.name);
 }
 
-// A sink's name in the panel, short enough not to be cut off: the chip
-// without "High Definition Audio Controller", the port as "HDMI/DP n".
+// A sink's or source's name in the panel, short enough not to be cut off: the
+// chip without "High Definition Audio Controller", the port as "HDMI/DP n".
 export function sinkLabel(description, name) {
     const d = description || name || "unknown";
     return d

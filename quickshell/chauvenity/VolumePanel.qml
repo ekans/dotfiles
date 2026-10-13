@@ -1,9 +1,11 @@
 pragma ComponentBehavior: Bound
 
 // The panel Volume.qml opens under the bar: the default sink's level, a
-// picker for the output, and the level of each stream playing into it.
+// picker for the output, the level of each stream playing into it, and below
+// them the same again for the microphone: the default source's level and a
+// picker for the input.
 // From the keyboard, the arrows step the level, M mutes, and 1–9 pick the
-// output listed under that number.
+// device listed under that number; with Shift they act on the microphone.
 
 import QtQuick
 import Quickshell.Io
@@ -21,6 +23,8 @@ Item {
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var sinks: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioSink)
+    readonly property var source: Pipewire.defaultAudioSource
+    readonly property var sources: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioSource)
     // The outputs offered: not the ones nothing is plugged into, unless it is
     // the current one.
     property var unplugged: []
@@ -30,14 +34,34 @@ Item {
         .map(group => group.source)
         .filter(n => !!n && n.isStream)
 
+    // The two device directions, each shown and driven the same way: what the
+    // head row and slider show (`node`, the default), what the picker lists
+    // (`nodes`) and how a pick takes effect.
+    readonly property var output: ({
+        heading: "Output",
+        node: panel.sink,
+        nodes: panel.shownSinks,
+        pick: node => { Pipewire.preferredDefaultAudioSink = node; },
+        input: false
+    })
+    readonly property var input: ({
+        heading: "Input",
+        node: panel.source,
+        nodes: panel.sources,
+        pick: node => { Pipewire.preferredDefaultAudioSource = node; },
+        input: true
+    })
+
     implicitWidth: 280
     implicitHeight: content.implicitHeight
 
     // A key pressed while the panel is open, from Volume.qml. Up and Right
     // step the default sink as a wheel notch does, Down and Left back; M
-    // mutes; a digit picks that output. Answers whether it was one of those.
+    // mutes; a digit picks that output. With Shift the same keys act on the
+    // default source and the inputs. Answers whether it was one of those.
     function keyPressed(event) {
-        const audio = panel.sink ? panel.sink.audio : null;
+        const direction = event.modifiers & Qt.ShiftModifier ? panel.input : panel.output;
+        const audio = direction.node ? direction.node.audio : null;
         const digit = Hints.digitKey(event.text, event.nativeScanCode);
         if (event.key === Qt.Key_Up || event.key === Qt.Key_Right) {
             if (audio)
@@ -49,8 +73,8 @@ Item {
             if (audio)
                 audio.muted = !audio.muted;
         } else if (digit > 0) {
-            if (digit <= panel.shownSinks.length)
-                Pipewire.preferredDefaultAudioSink = panel.shownSinks[digit - 1];
+            if (digit <= direction.nodes.length)
+                direction.pick(direction.nodes[digit - 1]);
         } else {
             return false;
         }
@@ -63,7 +87,7 @@ Item {
     }
 
     PwObjectTracker {
-        objects: panel.active ? panel.shownSinks.concat(panel.streams) : []
+        objects: panel.active ? panel.shownSinks.concat(panel.sources, panel.streams) : []
     }
 
     // PipeWire's node objects don't say whether a port has anything behind
@@ -157,12 +181,17 @@ Item {
         font.letterSpacing: 0.4
     }
 
-    Column {
-        id: content
-        width: parent.width
+    // One device direction from the records above: the default node's glyph
+    // (click to mute), name and level, its slider, and the picker.
+    component DeviceBlock: Column {
+        id: block
+
+        required property var theme
+        required property var direction
+        readonly property var node: block.direction.node
+
         spacing: 4
 
-        // The default sink: glyph (click to mute), name, level.
         Item {
             width: parent.width
             implicitHeight: 22
@@ -170,18 +199,19 @@ Item {
             AudioIcon {
                 id: headIcon
                 anchors.verticalCenter: parent.verticalCenter
-                theme: panel.theme
-                kind: panel.sink ? Audio.sinkKind(panel.sink.name, panel.sink.properties) : "speaker"
-                level: panel.sink && panel.sink.audio ? panel.sink.audio.volume : 0
-                muted: !!(panel.sink && panel.sink.audio && panel.sink.audio.muted)
-                ink: panel.theme.fgColor
+                theme: block.theme
+                kind: block.node ? Audio.nodeKind(block.node.name, block.node.properties) : "speaker"
+                input: block.direction.input
+                level: block.node && block.node.audio ? block.node.audio.volume : 0
+                muted: !!(block.node && block.node.audio && block.node.audio.muted)
+                ink: block.theme.fgColor
             }
             MouseArea {
                 anchors.fill: headIcon
                 anchors.margins: -3
                 onClicked: {
-                    if (panel.sink && panel.sink.audio)
-                        panel.sink.audio.muted = !panel.sink.audio.muted;
+                    if (block.node && block.node.audio)
+                        block.node.audio.muted = !block.node.audio.muted;
                 }
             }
             Text {
@@ -192,8 +222,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
-                text: panel.sink ? Audio.sinkLabel(panel.sink.description, panel.sink.name) : "No output"
-                color: panel.theme.fgColor
+                text: block.node ? Audio.sinkLabel(block.node.description, block.node.name)
+                    : "No " + block.direction.heading.toLowerCase()
+                color: block.theme.fgColor
                 font.pixelSize: 12
                 font.bold: true
             }
@@ -201,12 +232,12 @@ Item {
                 id: headLevel
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: !(panel.sink && panel.sink.audio) ? ""
-                    : panel.sink.audio.muted ? "muted"
-                    : Audio.percent(panel.sink.audio.volume)
-                color: !(panel.sink && panel.sink.audio) || panel.sink.audio.muted ? panel.theme.dimColor
-                    : panel.sink.audio.volume > 1.0005 ? panel.theme.warnColor
-                    : panel.theme.fgColor
+                text: !(block.node && block.node.audio) ? ""
+                    : block.node.audio.muted ? "muted"
+                    : Audio.percent(block.node.audio.volume)
+                color: !(block.node && block.node.audio) || block.node.audio.muted ? block.theme.dimColor
+                    : block.node.audio.volume > 1.0005 ? block.theme.warnColor
+                    : block.theme.fgColor
                 font.pixelSize: 12
                 font.features: { "tnum": 1 }
             }
@@ -214,25 +245,25 @@ Item {
 
         LevelSlider {
             width: parent.width
-            theme: panel.theme
-            node: panel.sink
+            theme: block.theme
+            node: block.node
         }
 
         Heading {
-            text: "Output"
-            color: panel.theme.dimColor
+            text: block.direction.heading
+            color: block.theme.dimColor
         }
 
         Repeater {
-            model: panel.shownSinks
+            model: block.direction.nodes
 
             Item {
-                id: sinkRow
+                id: row
                 required property var modelData
                 required property int index
-                readonly property bool current: sinkRow.modelData === panel.sink
+                readonly property bool current: row.modelData === block.node
 
-                width: content.width
+                width: block.width
                 implicitHeight: 24
 
                 Rectangle {
@@ -240,7 +271,7 @@ Item {
                     anchors.leftMargin: -6
                     anchors.rightMargin: -6
                     radius: 4
-                    color: sinkMouse.containsMouse ? panel.theme.hoverColor : "transparent"
+                    color: rowMouse.containsMouse ? block.theme.hoverColor : "transparent"
                 }
                 Rectangle {
                     id: dot
@@ -248,48 +279,61 @@ Item {
                     width: 8
                     height: 8
                     radius: 4
-                    color: sinkRow.current ? panel.theme.accentColor : "transparent"
-                    border.color: sinkRow.current ? panel.theme.accentColor : panel.theme.dimColor
+                    color: row.current ? block.theme.accentColor : "transparent"
+                    border.color: row.current ? block.theme.accentColor : block.theme.dimColor
                 }
                 AudioIcon {
-                    id: sinkIcon
+                    id: rowIcon
                     anchors.left: dot.right
                     anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    theme: panel.theme
-                    kind: Audio.sinkKind(sinkRow.modelData.name, sinkRow.modelData.properties)
+                    theme: block.theme
+                    kind: Audio.nodeKind(row.modelData.name, row.modelData.properties)
+                    input: block.direction.input
                     level: 1
-                    ink: sinkRow.current ? panel.theme.fgColor : panel.theme.dimColor
+                    ink: row.current ? block.theme.fgColor : block.theme.dimColor
                 }
                 Text {
-                    anchors.left: sinkIcon.right
+                    anchors.left: rowIcon.right
                     anchors.leftMargin: 6
-                    anchors.right: sinkKey.left
+                    anchors.right: rowKey.left
                     anchors.rightMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
-                    text: Audio.sinkLabel(sinkRow.modelData.description, sinkRow.modelData.name)
-                    color: sinkRow.current ? panel.theme.fgColor : panel.theme.dimColor
+                    text: Audio.sinkLabel(row.modelData.description, row.modelData.name)
+                    color: row.current ? block.theme.fgColor : block.theme.dimColor
                     font.pixelSize: 12
                 }
                 // The digit that picks it, as a menu shows a shortcut.
                 Text {
-                    id: sinkKey
+                    id: rowKey
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: sinkRow.index < 9 ? String(sinkRow.index + 1) : ""
-                    color: panel.theme.dimColor
+                    text: row.index < 9 ? String(row.index + 1) : ""
+                    color: block.theme.dimColor
                     font.pixelSize: 11
                     font.features: { "tnum": 1 }
                 }
                 MouseArea {
-                    id: sinkMouse
+                    id: rowMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: Pipewire.preferredDefaultAudioSink = sinkRow.modelData
+                    onClicked: block.direction.pick(row.modelData)
                 }
             }
+        }
+    }
+
+    Column {
+        id: content
+        width: parent.width
+        spacing: 4
+
+        DeviceBlock {
+            width: parent.width
+            theme: panel.theme
+            direction: panel.output
         }
 
         Heading {
@@ -349,9 +393,20 @@ Item {
             }
         }
 
+        Item {
+            width: 1
+            height: 8
+        }
+
+        DeviceBlock {
+            width: parent.width
+            theme: panel.theme
+            direction: panel.input
+        }
+
         Text {
             topPadding: 10
-            text: "↑↓ volume · M mute · 1–9 output · Esc close"
+            text: "↑↓ volume · M mute · 1–9 output · Esc close\nShift: the same for the microphone"
             color: panel.theme.dimColor
             font.pixelSize: 11
         }
