@@ -12,8 +12,9 @@ import Quickshell.Wayland
 Scope {
     id: wallpaper
 
-    // The picture; the one place to change it.
-    property string source: "/usr/share/backgrounds/gnome/sheet-d.jxl"
+    // The picture; the one place to change it. chezmoi downloads this one
+    // (.chezmoiexternal.toml).
+    property string source: `${Quickshell.env("HOME")}/.local/share/wallpapers/mr-goatee.jpg`
 
     Variants {
         model: Quickshell.screens
