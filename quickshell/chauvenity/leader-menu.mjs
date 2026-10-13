@@ -29,6 +29,7 @@ export const MENU = [
         { key: "p", name: "paragraph", run: qs("chauvenity", "translate", "run", "paragraph") },
         { key: "f", name: "fix the English", run: qs("chauvenity", "translate", "run", "fix") },
     ] },
+    { key: "c", name: "caffeine", run: qs("chauvenity", "caffeine", "toggle") },
     { key: "o", name: "bar panel", bar: qs("chauvenity", "bar", "toggle", "{item}") },
     { key: "h", name: "bar hints", run: qs("chauvenity", "bar", "hints") },
     { key: "?", name: "keyboard shortcuts", run: qs("chauvenity", "keys", "toggle") },
