@@ -1,0 +1,13 @@
+# Runs topgrade.service once a day, away from uupd's 04:00 run. Persistent
+# catches up a run missed while the machine was off. Enabled by the symlink
+# chezmoi manages in timers.target.wants/, since chezmoi never runs systemctl.
+[Unit]
+Description=Daily topgrade run
+
+[Timer]
+OnCalendar=*-*-* 12:30
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

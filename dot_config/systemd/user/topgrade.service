@@ -1,0 +1,18 @@
+# Topgrade's user-level steps: brew, mise, npm, cargo, gcloud, editors,
+# Claude Code, and the custom commands in ~/.config/topgrade.toml. Started by
+# topgrade.timer.
+#
+# uupd owns the bootc image and Flatpak, so Flatpak is disabled here and
+# topgrade.toml disables `system`. Nothing here needs sudo. The user manager's
+# PATH has no linuxbrew, so the unit sets its own.
+[Unit]
+Description=Topgrade (user steps, unattended)
+Documentation=https://github.com/topgrade-rs/topgrade
+
+[Service]
+Type=oneshot
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:%h/.local/bin:%h/.cargo/bin:%h/.local/share/mise/shims:%h/.npm-global/bin:%h/.bun/bin:%h/opt/google-cloud-sdk/bin:/usr/local/bin:/usr/bin
+ExecStart=/home/linuxbrew/.linuxbrew/bin/topgrade --disable flatpak
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=1h
