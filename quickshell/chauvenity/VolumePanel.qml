@@ -6,8 +6,14 @@ pragma ComponentBehavior: Bound
 // picker for the input.
 // From the keyboard, the arrows step the level, M mutes, and 1–9 pick the
 // device listed under that number; with Shift they act on the microphone.
+//
+// The output reads and drives Quickshell's PipeWire nodes, as the bar does.
+// The input reads and drives pactl instead: its nodes resolve a monitor
+// default to the sink and give a virtual source no audio, and pulse's view
+// has both as plain sources with a level and a mute of their own.
 
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import "audio.mjs" as Audio
@@ -17,14 +23,13 @@ Item {
     id: panel
 
     required property var theme
-    // Whether the panel is open. The nodes it lists are only tracked then:
-    // PipeWire reports no volume for a node nothing tracks.
+    // Whether the panel is open. The nodes it lists are only tracked, and the
+    // microphones only followed, then: PipeWire reports no volume for a node
+    // nothing tracks.
     property bool active: false
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var sinks: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioSink)
-    readonly property var source: Pipewire.defaultAudioSource
-    readonly property var sources: Pipewire.nodes.values.filter(n => n.type === PwNodeType.AudioSource)
     // The outputs offered: not the ones nothing is plugged into, unless it is
     // the current one.
     property var unplugged: []
@@ -34,22 +39,50 @@ Item {
         .map(group => group.source)
         .filter(n => !!n && n.isStream)
 
+    // The microphones, as audio.mjs inputDevices() reads them from pactl:
+    // `current`, the default, and `shown`, the ones the picker lists.
+    property var inputState: ({ current: null, shown: [] })
+
     // The two device directions, each shown and driven the same way: what the
-    // head row and slider show (`node`, the default), what the picker lists
-    // (`nodes`) and how a pick takes effect.
+    // head row and slider show (`current`, the default, or null), what the
+    // picker lists (`devices`, in picking order) and what the keys and the
+    // pointer do to them.
     readonly property var output: ({
         heading: "Output",
-        node: panel.sink,
-        nodes: panel.shownSinks,
-        pick: node => { Pipewire.preferredDefaultAudioSink = node; },
-        input: false
+        input: false,
+        current: panel.sink ? {
+            label: Audio.sinkLabel(panel.sink.description, panel.sink.name),
+            kind: Audio.nodeKind(panel.sink.name, panel.sink.properties),
+            volume: panel.sink.audio ? panel.sink.audio.volume : 0,
+            muted: !!(panel.sink.audio && panel.sink.audio.muted)
+        } : null,
+        devices: panel.shownSinks.map(n => ({
+            label: Audio.sinkLabel(n.description, n.name),
+            kind: Audio.nodeKind(n.name, n.properties),
+            current: n === panel.sink
+        })),
+        setVolume: v => {
+            if (panel.sink && panel.sink.audio)
+                panel.sink.audio.volume = v;
+        },
+        toggleMute: () => {
+            if (panel.sink && panel.sink.audio)
+                panel.sink.audio.muted = !panel.sink.audio.muted;
+        },
+        pick: i => { Pipewire.preferredDefaultAudioSink = panel.shownSinks[i]; }
     })
     readonly property var input: ({
         heading: "Input",
-        node: panel.source,
-        nodes: panel.sources,
-        pick: node => { Pipewire.preferredDefaultAudioSource = node; },
-        input: true
+        input: true,
+        current: panel.inputState.current,
+        devices: panel.inputState.shown.map(d => ({
+            label: d.label,
+            kind: d.kind,
+            current: !!panel.inputState.current && d.name === panel.inputState.current.name
+        })),
+        setVolume: v => panel.setInputVolume(v),
+        toggleMute: () => panel.toggleInputMute(),
+        pick: i => panel.pickInput(i)
     })
 
     implicitWidth: 280
@@ -61,24 +94,24 @@ Item {
     // default source and the inputs. Answers whether it was one of those.
     function keyPressed(event) {
         const direction = event.modifiers & Qt.ShiftModifier ? panel.input : panel.output;
-        const audio = direction.node ? direction.node.audio : null;
+        const current = direction.current;
         // Shift on the keypad types its navigation keys, so the digit comes
         // from the key's position, before the arrows are asked.
         const shiftedKeypad = (event.modifiers & Qt.ShiftModifier) && (event.modifiers & Qt.KeypadModifier);
         const digit = shiftedKeypad ? Hints.keypadDigit(event.nativeScanCode)
             : Hints.digitKey(event.text, event.nativeScanCode);
         if (digit > 0) {
-            if (digit <= direction.nodes.length)
-                direction.pick(direction.nodes[digit - 1]);
+            if (digit <= direction.devices.length)
+                direction.pick(digit - 1);
         } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Right) {
-            if (audio)
-                audio.volume = Audio.stepVolume(audio.volume, 1);
+            if (current)
+                direction.setVolume(Audio.stepVolume(current.volume, 1));
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Left) {
-            if (audio)
-                audio.volume = Audio.stepVolume(audio.volume, -1);
+            if (current)
+                direction.setVolume(Audio.stepVolume(current.volume, -1));
         } else if (event.key === Qt.Key_M) {
-            if (audio)
-                audio.muted = !audio.muted;
+            if (current)
+                direction.toggleMute();
         } else {
             return false;
         }
@@ -91,7 +124,7 @@ Item {
     }
 
     PwObjectTracker {
-        objects: panel.active ? panel.shownSinks.concat(panel.sources, panel.streams) : []
+        objects: panel.active ? panel.shownSinks.concat(panel.streams) : []
     }
 
     // PipeWire's node objects don't say whether a port has anything behind
@@ -108,7 +141,10 @@ Item {
             portsFetch.running = true;
     }
 
-    onActiveChanged: panel.refresh()
+    onActiveChanged: {
+        panel.refresh();
+        panel.refreshInput();
+    }
     onSinksChanged: panel.refresh()
 
     Process {
@@ -126,22 +162,137 @@ Item {
         }
     }
 
-    // A node's level, 0–100 %, set by clicking or dragging along it. Past
-    // 100 % the fill is full and in the warn colour.
+    // The microphones, read from pactl: the default's name on the first line,
+    // then the sources as JSON. Read on opening, and whenever pulse says a
+    // source or the default changed while open. A read asked for while one
+    // runs is made once it ends, so the last change is always read.
+    property bool inputStale: false
+
+    function refreshInput() {
+        if (!panel.active)
+            return;
+        if (inputFetch.running)
+            panel.inputStale = true;
+        else
+            inputFetch.running = true;
+    }
+
+    Process {
+        id: inputFetch
+        command: ["sh", "-c", "pactl get-default-source; pactl -f json list sources"]
+        environment: ({ LC_ALL: "C" })
+        stdout: StdioCollector {
+            id: inputOutput
+            onStreamFinished: {
+                // A volume being set is newer than what was read: the read
+                // that follows it will have it.
+                if (volumeSet.running || panel.pendingVolume)
+                    return;
+                const text = inputOutput.text;
+                const newline = text.indexOf("\n");
+                panel.inputState = newline < 0 ? Audio.inputDevices("", "")
+                    : Audio.inputDevices(text.slice(newline + 1), text.slice(0, newline).trim());
+            }
+        }
+        onRunningChanged: {
+            if (!inputFetch.running && panel.inputStale) {
+                panel.inputStale = false;
+                panel.refreshInput();
+            }
+        }
+    }
+
+    // Source and default changes, as they happen, only while open.
+    Process {
+        running: panel.active
+        command: ["pactl", "subscribe"]
+        environment: ({ LC_ALL: "C" })
+        stdout: SplitParser {
+            onRead: line => {
+                if (/ on (source|server) /.test(line))
+                    panel.refreshInput();
+            }
+        }
+    }
+
+    // `patch` applied to the input called `name` in the state at once, so a
+    // slider follows the pointer without waiting for pactl to answer.
+    function patchInput(name, patch) {
+        const apply = d => d.name === name ? Object.assign({}, d, patch) : d;
+        const state = panel.inputState;
+        panel.inputState = {
+            current: state.current ? apply(state.current) : null,
+            shown: state.shown.map(apply)
+        };
+    }
+
+    // A slider drag sets the level many times a second. One command runs at a
+    // time, and the latest value asked for while it runs waits for it to end;
+    // the ones in between are never sent.
+    property var pendingVolume: null
+
+    function sendVolume(job) {
+        if (volumeSet.running) {
+            panel.pendingVolume = job;
+        } else {
+            volumeSet.command = ["pactl", "set-source-volume", job.name, String(job.raw)];
+            volumeSet.running = true;
+        }
+    }
+
+    function setInputVolume(volume) {
+        const current = panel.inputState.current;
+        if (!current)
+            return;
+        panel.patchInput(current.name, { volume: Math.max(0, volume) });
+        panel.sendVolume({ name: current.name, raw: Audio.paVolume(volume) });
+    }
+
+    function toggleInputMute() {
+        const current = panel.inputState.current;
+        if (!current)
+            return;
+        panel.patchInput(current.name, { muted: !current.muted });
+        Quickshell.execDetached(["pactl", "set-source-mute", current.name, "toggle"]);
+    }
+
+    function pickInput(index) {
+        const picked = panel.inputState.shown[index];
+        if (!picked)
+            return;
+        panel.inputState = { current: picked, shown: panel.inputState.shown };
+        Quickshell.execDetached(["pactl", "set-default-source", picked.name]);
+    }
+
+    Process {
+        id: volumeSet
+        onRunningChanged: {
+            if (volumeSet.running)
+                return;
+            const next = panel.pendingVolume;
+            panel.pendingVolume = null;
+            if (next)
+                panel.sendVolume(next);
+            else
+                panel.refreshInput();
+        }
+    }
+
+    // A level, 0–100 %, set by clicking or dragging along it: `moved` says
+    // what to. Past 100 % the fill is full and in the warn colour.
     component LevelSlider: Item {
         id: slider
 
         required property var theme
-        required property var node
+        required property real level
+        required property bool muted
 
-        readonly property real level: slider.node && slider.node.audio ? slider.node.audio.volume : 0
-        readonly property bool muted: !!(slider.node && slider.node.audio && slider.node.audio.muted)
+        signal moved(real level)
 
         implicitHeight: 16
 
         function setFrom(x) {
-            if (slider.node && slider.node.audio)
-                slider.node.audio.volume = Math.max(0, Math.min(1, x / slider.width));
+            slider.moved(Math.max(0, Math.min(1, x / slider.width)));
         }
 
         Rectangle {
@@ -185,14 +336,14 @@ Item {
         font.letterSpacing: 0.4
     }
 
-    // One device direction from the records above: the default node's glyph
+    // One device direction from the records above: the default device's glyph
     // (click to mute), name and level, its slider, and the picker.
     component DeviceBlock: Column {
         id: block
 
         required property var theme
         required property var direction
-        readonly property var node: block.direction.node
+        readonly property var current: block.direction.current
 
         spacing: 4
 
@@ -204,18 +355,18 @@ Item {
                 id: headIcon
                 anchors.verticalCenter: parent.verticalCenter
                 theme: block.theme
-                kind: block.node ? Audio.nodeKind(block.node.name, block.node.properties) : "speaker"
+                kind: block.current ? block.current.kind : "speaker"
                 input: block.direction.input
-                level: block.node && block.node.audio ? block.node.audio.volume : 0
-                muted: !!(block.node && block.node.audio && block.node.audio.muted)
+                level: block.current ? block.current.volume : 0
+                muted: !!block.current && block.current.muted
                 ink: block.theme.fgColor
             }
             MouseArea {
                 anchors.fill: headIcon
                 anchors.margins: -3
                 onClicked: {
-                    if (block.node && block.node.audio)
-                        block.node.audio.muted = !block.node.audio.muted;
+                    if (block.current)
+                        block.direction.toggleMute();
                 }
             }
             Text {
@@ -226,7 +377,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
-                text: block.node ? Audio.sinkLabel(block.node.description, block.node.name)
+                text: block.current ? block.current.label
                     : "No " + block.direction.heading.toLowerCase()
                 color: block.theme.fgColor
                 font.pixelSize: 12
@@ -236,11 +387,11 @@ Item {
                 id: headLevel
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: !(block.node && block.node.audio) ? ""
-                    : block.node.audio.muted ? "muted"
-                    : Audio.percent(block.node.audio.volume)
-                color: !(block.node && block.node.audio) || block.node.audio.muted ? block.theme.dimColor
-                    : block.node.audio.volume > 1.0005 ? block.theme.warnColor
+                text: !block.current ? ""
+                    : block.current.muted ? "muted"
+                    : Audio.percent(block.current.volume)
+                color: !block.current || block.current.muted ? block.theme.dimColor
+                    : block.current.volume > 1.0005 ? block.theme.warnColor
                     : block.theme.fgColor
                 font.pixelSize: 12
                 font.features: { "tnum": 1 }
@@ -250,7 +401,12 @@ Item {
         LevelSlider {
             width: parent.width
             theme: block.theme
-            node: block.node
+            level: block.current ? block.current.volume : 0
+            muted: !!block.current && block.current.muted
+            onMoved: level => {
+                if (block.current)
+                    block.direction.setVolume(level);
+            }
         }
 
         Heading {
@@ -259,13 +415,13 @@ Item {
         }
 
         Repeater {
-            model: block.direction.nodes
+            model: block.direction.devices
 
             Item {
                 id: row
                 required property var modelData
                 required property int index
-                readonly property bool current: row.modelData === block.node
+                readonly property bool current: row.modelData.current
 
                 width: block.width
                 implicitHeight: 24
@@ -292,7 +448,7 @@ Item {
                     anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     theme: block.theme
-                    kind: Audio.nodeKind(row.modelData.name, row.modelData.properties)
+                    kind: row.modelData.kind
                     input: block.direction.input
                     level: 1
                     ink: row.current ? block.theme.fgColor : block.theme.dimColor
@@ -305,7 +461,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
-                    text: Audio.sinkLabel(row.modelData.description, row.modelData.name)
+                    text: row.modelData.label
                     color: row.current ? block.theme.fgColor : block.theme.dimColor
                     font.pixelSize: 12
                 }
@@ -323,7 +479,7 @@ Item {
                     id: rowMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: block.direction.pick(row.modelData)
+                    onClicked: block.direction.pick(row.index)
                 }
             }
         }
@@ -381,7 +537,12 @@ Item {
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
                     theme: panel.theme
-                    node: streamRow.modelData
+                    level: streamRow.modelData.audio ? streamRow.modelData.audio.volume : 0
+                    muted: !!(streamRow.modelData.audio && streamRow.modelData.audio.muted)
+                    onMoved: level => {
+                        if (streamRow.modelData.audio)
+                            streamRow.modelData.audio.volume = level;
+                    }
                 }
                 Text {
                     id: streamLevel
