@@ -76,3 +76,13 @@ layer-rule {
 layout {
     background-color "transparent"
 }
+
+// The overlays (keys, translate, bb-go, bb-new, clipboard, snippets) blur what
+// is behind them. niri's default "xray" blur shows only the wallpaper, so a
+// card would look the same over any window.
+layer-rule {
+    match layer="overlay"
+    background-effect {
+        xray false
+    }
+}
