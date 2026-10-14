@@ -4,7 +4,7 @@ pragma ComponentBehavior: Bound
 // else the Wi-Fi arcs lit to the signal and the network's name. Wi-Fi off is
 // the fan struck through. Connected without reaching the internet (a café's
 // sign-in page) turns it the warn colour. A middle click turns Wi-Fi on or
-// off, and a click opens NetworkPanel, where the networks are picked (Mod+B
+// off, and a click opens NetworkPanel, where the networks are picked (Super+Space h
 // then N opens it).
 //
 // All of it comes from Quickshell.Networking, which talks to NetworkManager

@@ -2,9 +2,8 @@
 // order its pages show them. leader.mjs says what an entry can hold; Quickshell
 // reloads the bar when this file is saved, and tests/leader.test.mjs checks it.
 //
-// Every pick runs a command once the menu has given the keyboard back, so a
-// plugin is reached the way its niri bind reaches it, and those binds
-// (Mod+N, Mod+G, Mod+T, …) still work on their own.
+// Every pick runs a command once the menu has given the keyboard back, and
+// this is the only way to a plugin: none has a niri bind of its own.
 
 // `qs -c <config> ipc call <target> <function> <args…>`
 function qs(config, target, fn) {
@@ -19,7 +18,10 @@ export const MENU = [
         { key: "g", name: "go to…", run: qs("bb-go", "bbgo", "toggle") },
         { key: "a", name: "ask about the screen", run: ["sh", "-c", "exec \"$HOME/.local/bin/pick-to-bb\""] },
     ] },
-    { key: "v", name: "clipboard", run: qs("clipboard", "clipboard", "toggle") },
+    { key: "v", name: "clipboard", children: [
+        { key: "v", name: "history", run: qs("clipboard", "clipboard", "toggle") },
+        { key: "i", name: "copied images line", run: qs("clipboard", "line", "toggle") },
+    ] },
     { key: "s", name: "snippets", children: [
         { key: "s", name: "insert a snippet", run: qs("snippets", "snippets", "toggle") },
         { key: "c", name: "capture the selection", run: qs("snippets", "snippets", "capture") },
@@ -28,6 +30,11 @@ export const MENU = [
         { key: "w", name: "word", run: qs("chauvenity", "translate", "run", "word") },
         { key: "p", name: "paragraph", run: qs("chauvenity", "translate", "run", "paragraph") },
         { key: "f", name: "fix the English", run: qs("chauvenity", "translate", "run", "fix") },
+        { key: "t", name: "chooser", run: qs("chauvenity", "translate", "choose") },
+    ] },
+    { key: "n", name: "notifications", children: [
+        { key: "d", name: "do not disturb", run: qs("chauvenity", "notifications", "dnd") },
+        { key: "x", name: "put away", run: qs("chauvenity", "notifications", "close") },
     ] },
     { key: "c", name: "caffeine", run: qs("chauvenity", "caffeine", "toggle") },
     { key: "o", name: "bar panel", bar: qs("chauvenity", "bar", "toggle", "{item}") },

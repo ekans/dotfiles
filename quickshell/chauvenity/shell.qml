@@ -260,7 +260,7 @@ ShellRoot {
     // output niri has focused:
     //
     //     qs -c chauvenity ipc call bar toggle volume   # any item's hintName
-    //     qs -c chauvenity ipc call bar hints           # Mod+B in ~/.config/niri
+    //     qs -c chauvenity ipc call bar hints           # Super+Space h
     //     qs -c chauvenity ipc call bar close
     //
     // `hints` puts a key over each workspace and item and takes the keyboard:
@@ -344,8 +344,8 @@ ShellRoot {
     }
 
     // --- keyboard shortcuts --------------------------------------------------
-    // niri's binds, grouped and in columns, on the focused output: Mod+Shift+/
-    // in ~/.config/niri/config.kdl, in place of niri's own one-column list.
+    // niri's binds, grouped and in columns, on the focused output: Super+Space ?
+    // in the leader menu, in place of niri's own one-column list.
     //
     //     qs -c chauvenity ipc call keys toggle
     //     qs -c chauvenity ipc call keys close
@@ -379,8 +379,8 @@ ShellRoot {
     ]
 
     // --- translator ---------------------------------------------------------
-    // French into English, and English made simple, from the keyboard: Mod+E
-    // in ~/.config/niri, then a key for the mode. Translator.qml has the whole
+    // French into English, and English made simple, from the keyboard: Super+Space t t
+    // in the leader menu, then a key for the mode. Translator.qml has the whole
     // story; all of it shows in a panel on the right (TranslatePanel), none
     // in the bar.
     //
@@ -400,7 +400,7 @@ ShellRoot {
     }
 
     // --- leader menu ----------------------------------------------------------
-    // One key to every plugin, this bar's and the others': Mod+Space in
+    // One key to every plugin, this bar's and the others': Super+Space in
     // ~/.config/niri, then a key at a time, the way Spacemacs does it.
     // Leader.qml has the whole story, leader-menu.mjs the keys.
     //
@@ -412,7 +412,7 @@ ShellRoot {
         theme: root
         outputName: root.focusedOutput || (Quickshell.screens[0]?.name ?? "")
         // Their grabs would hold the keyboard the menu needs. Its page of
-        // the bar's items is read now, under the letters Mod+B gives them.
+        // the bar's items is read now, under the letters Super+Space h gives them.
         onOpening: {
             root.endHints();
             barPanels.close();
@@ -463,8 +463,8 @@ ShellRoot {
     // focused output, and stay in the bell's panel (Notifications) until
     // dismissed. From the keyboard:
     //
-    //     qs -c chauvenity ipc call notifications dnd     # Mod+Shift+N
-    //     qs -c chauvenity ipc call notifications close   # Mod+Escape
+    //     qs -c chauvenity ipc call notifications dnd     # Super+Space n d
+    //     qs -c chauvenity ipc call notifications close   # Super+Space n x
     //     qs -c chauvenity ipc call notifications clear
     //     qs -c chauvenity ipc call bar toggle notifications
 
@@ -502,7 +502,7 @@ ShellRoot {
 
     // --- the bar ------------------------------------------------------------
 
-    // Lets pick-to-bb (Mod+Shift+A) describe bar and popup elements.
+    // Lets pick-to-bb (Super+Space b a) describe bar and popup elements.
     PickInspector {
         roots: [bars, keysPanel.window, translate.panel, leader.window]
     }

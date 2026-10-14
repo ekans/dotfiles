@@ -1,11 +1,10 @@
 pragma ComponentBehavior: Bound
 
-// Mod+E's translator: French into English, and English made simple, from the
-// keyboard. `qs -c chauvenity ipc call translate choose` (Mod+E in
-// ~/.config/niri) reads the selection clipboard (the primary selection, what
+// Super+Space t's translator: French into English, and English made simple, from the
+// keyboard. `qs -c chauvenity ipc call translate choose` (Super+Space t t) reads the selection clipboard (the primary selection, what
 // middle-click pastes), and a panel on the right of the focused output
 // (TranslatePanel) shows it and offers the three modes, a key each, the way
-// Mod+B's hints do, with what each would do with it:
+// Super+Space h's hints do, with what each would do with it:
 //
 //     w  word        a word or a set phrase (faire le point): its senses from
 //                    Wiktionary. ←→ pick one, ↵ pastes it over the

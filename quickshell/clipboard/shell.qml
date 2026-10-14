@@ -4,8 +4,8 @@ pragma ComponentBehavior: Bound
 //
 // This instance records — two `wl-paste --watch cliphist store`, one for text
 // and one for images, as cliphist's README sets them up — and shows the history
-// as an overlay toggled over IPC, bound to Mod+Shift+V in
-// ~/.config/niri/config.kdl:
+// as an overlay toggled over IPC, from Super+Space v v in
+// chauvenity's leader menu:
 //
 //     qs -c clipboard ipc call clipboard toggle
 //
@@ -137,7 +137,7 @@ ShellRoot {
         open: root.open
     }
 
-    // Lets pick-to-bb (Mod+Shift+A) describe the overlay's elements.
+    // Lets pick-to-bb (Super+Space b a) describe the overlay's elements.
     PickInspector {
         roots: [overlay]
     }

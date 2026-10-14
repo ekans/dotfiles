@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 // Super+Space's leader menu, the way Spacemacs's which-key does it: one bind
 // in ~/.config/niri, then a key at a time down a menu of the plugins.
 //
-//     qs -c chauvenity ipc call leader toggle     # Mod+Space in ~/.config/niri
+//     qs -c chauvenity ipc call leader toggle     # Super+Space in ~/.config/niri
 //     qs -c chauvenity ipc call leader close
 //
 // It takes the keyboard at once but shows nothing for a moment: keys typed

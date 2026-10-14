@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 // The keyboard shortcuts panel: niri's binds, grouped by what they act on and
 // laid out in columns, in place of niri's own one-column list.
 //
-//     qs -c chauvenity ipc call keys toggle     # Mod+Shift+/ in ~/.config/niri
+//     qs -c chauvenity ipc call keys toggle     # Super+Space ? in ~/.config/niri
 //
 // The binds are read from niri's config files each time the panel opens, the
 // way niri reads them (includes, and later binds overriding earlier ones), so

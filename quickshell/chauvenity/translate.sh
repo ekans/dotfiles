@@ -1,5 +1,5 @@
 #!/bin/sh
-# Mod+E's translator's dealings with the rest of the session. Translator.qml
+# Super+Space t's translator's dealings with the rest of the session. Translator.qml
 # runs it as `sh translate.sh <command>`; the first line of what it prints
 # says how it went, the rest is the answer (translate.mjs reads it).
 #
@@ -32,7 +32,7 @@
 
 set -u
 
-# A line per step in $XDG_RUNTIME_DIR/translate.log: what each Mod+E read,
+# A line per step in $XDG_RUNTIME_DIR/translate.log: what each Super+Space t read,
 # sent and pasted, to find out why one went wrong.
 log() {
     printf '%s %s\n' "$(date +%T.%3N)" "$*" >> "${XDG_RUNTIME_DIR:-/tmp}/translate.log"

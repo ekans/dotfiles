@@ -40,7 +40,7 @@ test("pageAt has no page for a key that leads nowhere, or to a command", () => {
     assert.equal(pageAt(menu, ["b", "n"], barItems), null);
 });
 
-test("a bar page has the bar's items, under the letters Mod+B gives them", () => {
+test("a bar page has the bar's items, under the letters Super+Space h gives them", () => {
     const page = pageAt(menu, ["o"], barItems);
     assert.deepEqual(page.entries, [
         { key: "v", name: "volume", run: ["bar", "toggle", "volume"] },

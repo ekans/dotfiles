@@ -5,9 +5,9 @@ pragma ComponentBehavior: Bound
 // Settings sections, each plugin's settings page and the projects. Enter
 // sends the bb tab already open there and raises its browser window.
 //
-// The overlay opens over IPC, bound in ~/.config/niri/config.kdl:
+// The overlay opens over IPC, from Super+Space b g in chauvenity's leader menu:
 //
-//     qs -c bb-go ipc call bbgo toggle               Mod+G
+//     qs -c bb-go ipc call bbgo toggle
 //
 // (From a shell without WAYLAND_DISPLAY, a bb thread's for one, add
 // `--any-display` after `ipc`: qs only finds instances on its own display.)
@@ -103,7 +103,7 @@ ShellRoot {
         open: root.open
     }
 
-    // Lets pick-to-bb (Mod+Shift+A) describe the overlay's elements.
+    // Lets pick-to-bb (Super+Space b a) describe the overlay's elements.
     PickInspector {
         roots: [overlay]
     }

@@ -1,4 +1,4 @@
-// Unit tests for Mod+E's translator.
+// Unit tests for Super+Space t's translator.
 //
 //   node --test ~/.config/quickshell/chauvenity/tests/
 
