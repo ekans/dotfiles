@@ -17,6 +17,12 @@ binds {
     // while the lock is up it only waits for it.
     Mod+Alt+L allow-when-locked=true hotkey-overlay-title="Lock the Screen" { spawn "/var/home/ducatore/.config/quickshell/chauvenity-lock/lock.sh"; }
 
+    // The laptop's own panel off and on, unlike Mod+Shift+P's
+    // power-off-monitors: it stays off when a key is pressed, and its
+    // windows move to the other monitors. niri reports an off output with
+    // no current mode.
+    F1 allow-when-locked=true hotkey-overlay-title="Turn the laptop screen off or on" { spawn-sh r#"niri msg output eDP-1 "$(niri msg -j outputs | jq -r '.["eDP-1"].current_mode | if . == null then "on" else "off" end')""#; }
+
     // One key to every plugin below, then a key at a time, the way Spacemacs
     // does it: b bb, v clipboard, s snippets, t translate, o a bar panel,
     // h the bar's hints, ? these shortcuts. Typed without a pause, nothing
