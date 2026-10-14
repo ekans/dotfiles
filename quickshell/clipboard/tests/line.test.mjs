@@ -7,6 +7,10 @@ import assert from "node:assert/strict";
 import {
     MAX_ITEMS,
     isName,
+    MAX_PIXELS,
+    dimensions,
+    parseSaved,
+    frameBounds,
     ropeY,
     cardX,
     photoSize,
@@ -23,7 +27,8 @@ const names = n => Array.from({ length: n }, (_, i) => i.toString(16).padStart(6
 
 test("only the watcher's file names are line items", () => {
     assert.equal(isName(SHA_A + ".png"), true);
-    assert.equal(isName(SHA_A + ".webp"), true);
+    assert.equal(isName(SHA_A + ".jpeg"), true);
+    assert.equal(isName(SHA_A + ".webp"), false);
     assert.equal(isName(SHA_A + ".svg+xml"), false);
     assert.equal(isName(".in.Xy12ab"), false);
     assert.equal(isName("A".repeat(64) + ".png"), false);
@@ -103,4 +108,35 @@ test("a swing comes to rest", () => {
         frames++;
     }
     assert.ok(frames > 60 * 3 && frames < 60 * 8, `rested after ${frames} frames`);
+});
+
+test("file's description gives the image's size, whatever the format", () => {
+    assert.deepEqual(dimensions("PNG image data, 12000 x 12000, 8-bit/color RGBA, non-interlaced"), { width: 12000, height: 12000 });
+    assert.deepEqual(dimensions("GIF image data, version 89a, 320 x 200"), { width: 320, height: 200 });
+    assert.deepEqual(dimensions("PC bitmap, Windows 3.x format, 640 x -480 x 24, image size 921600, resolution 2835 x 2835 px/m"), { width: 640, height: 480 });
+    assert.deepEqual(dimensions("JPEG image data, JFIF standard 1.01, resolution (DPI), density 72x72, segment length 16, baseline, precision 8, 4000x3000, components 3"), { width: 4000, height: 3000 });
+    assert.equal(dimensions("JPEG image data"), null);
+});
+
+test("an image too big for Qt to decode does not fit", () => {
+    assert.equal(MAX_PIXELS, 60000000);
+    assert.deepEqual(parseSaved(SHA_A + ".png\tPNG image data, 12000 x 12000, 8-bit/color RGBA"), { name: SHA_A + ".png", fits: false });
+    assert.deepEqual(parseSaved(SHA_A + ".png\tPNG image data, 4000 x 4000, 8-bit/color RGBA"), { name: SHA_A + ".png", fits: true });
+    assert.deepEqual(parseSaved(SHA_B + ".jpeg\tJPEG image data"), { name: SHA_B + ".jpeg", fits: true });
+    assert.equal(parseSaved(SHA_A + ".webp\tRIFF (little-endian) data, Web/P image"), null);
+    assert.equal(parseSaved(""), null);
+});
+
+test("an upright frame's box is the frame", () => {
+    assert.deepEqual(frameBounds(100, 50, 1, 0), { x: 25, y: 14, width: 100, height: 50 });
+});
+
+test("hover scales the frame's box from its top edge", () => {
+    assert.deepEqual(frameBounds(100, 50, 1.2, 0), { x: 15, y: 14, width: 120, height: 60 });
+});
+
+test("a turned card's box holds every corner of its frame", () => {
+    // Turned 90° about the clip, the frame lies to the left of it.
+    const box = frameBounds(100, 50, 1, 90);
+    assert.deepEqual([box.x, box.y, box.width, box.height].map(Math.round), [75 - 64, -50, 50, 100]);
 });

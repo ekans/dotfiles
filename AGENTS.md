@@ -36,6 +36,13 @@ niri-sandbox shot                                     # prints a PNG path to rea
 niri-sandbox down
 ```
 
+The sandbox is not sealed. It has its own `XDG_RUNTIME_DIR` but shares
+`$HOME` and the session bus. So `xdg-open` there opens in the user's real
+browser, and a clipboard instance that finds `cliphist` on its PATH writes to
+the real history (`~/.cache/cliphist/db`). Before you spawn
+`quickshell/clipboard`, put a stub `xdg-open` first on its PATH and set
+`CLIPHIST_DB_PATH` to a scratch file.
+
 `run` also takes `niri msg`, `wtype` and `wl-copy`. `qs log -p DIR` (through
 `run`) shows a sandboxed instance's log. If `niri-sandbox` is not on PATH, use
 `~/src/ekans/chauvenity-os/files/system/usr/bin/niri-sandbox`.

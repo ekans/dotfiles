@@ -15,11 +15,45 @@ export const INSET = 4;
 export const ROPE_TOP = 10;
 export const PANEL_HEIGHT = PHOTO_MAX_HEIGHT + 106;
 
-// What the watcher saves: `<sha256>.<ext>`, the formats Qt decodes.
-const NAME = /^[0-9a-f]{64}\.(png|jpeg|gif|bmp|webp)$/;
+// What the watcher saves: `<sha256>.<ext>`, in a format Qt decodes without
+// qt6-qtimageformats, which this system does not have: no webp.
+const NAME = /^[0-9a-f]{64}\.(png|jpeg|gif|bmp)$/;
 
 export function isName(name) {
     return NAME.test(name);
+}
+
+// Qt refuses to decode an image over 256 MB, 4 bytes a pixel, and decodes a
+// PNG in full before scaling it: anything bigger would hang as a blank card.
+export const MAX_PIXELS = 60000000;
+
+// `file --brief` of a saved image → its size, or null if it does not say.
+const DIMENSIONS = [
+    /^PNG image data, (\d+) x (\d+)/,
+    /^GIF image data, version \w+, (\d+) x (\d+)/,
+    /bitmap.*?, (\d+) x -?(\d+)/,
+    /, (\d+)x(\d+), components/,
+];
+
+export function dimensions(description) {
+    for (const pattern of DIMENSIONS) {
+        const match = pattern.exec(String(description || ""));
+        if (match)
+            return { width: Number(match[1]), height: Number(match[2]) };
+    }
+    return null;
+}
+
+// A watcher line, `<name>\t<file --brief>` → { name, fits }, or null if it
+// names nothing the line can hang.
+export function parseSaved(output) {
+    const text = String(output || "").trim();
+    const tab = text.indexOf("\t");
+    const name = tab < 0 ? text : text.slice(0, tab);
+    if (!isName(name))
+        return null;
+    const size = dimensions(tab < 0 ? "" : text.slice(tab + 1));
+    return { name: name, fits: !size || size.width * size.height <= MAX_PIXELS };
 }
 
 // The rope hangs as a parabola from edge to edge.
@@ -51,6 +85,30 @@ export function photoSize(width, height) {
         return { width: maxW, height: maxH };
     const scale = Math.min(maxW / width, maxH / height);
     return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+// The box around a card's frame as drawn, in the card's coordinates: the
+// frame (w × h, `FRAME_TOP` below the clip's top) scaled from its top edge,
+// then the card turned `degrees` about the clip. The line's input mask uses
+// it, so a click on a tilted or swinging photo lands on it.
+export const FRAME_TOP = 14;
+
+export function frameBounds(w, h, scale, degrees) {
+    const a = degrees * Math.PI / 180;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    const half = w * scale / 2;
+    const corners = [[-half, FRAME_TOP], [half, FRAME_TOP], [-half, FRAME_TOP + h * scale], [half, FRAME_TOP + h * scale]];
+    const xs = corners.map(c => c[0] * cos - c[1] * sin);
+    const ys = corners.map(c => c[0] * sin + c[1] * cos);
+    const left = Math.min.apply(null, xs);
+    const top = Math.min.apply(null, ys);
+    return {
+        x: CARD_WIDTH / 2 + left,
+        y: top,
+        width: Math.max.apply(null, xs) - left,
+        height: Math.max.apply(null, ys) - top,
+    };
 }
 
 // Every image hangs a little crooked, like on a real line.

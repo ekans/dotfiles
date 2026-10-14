@@ -9,11 +9,12 @@ pragma ComponentBehavior: Bound
 // first, at most Line.MAX_ITEMS, so a restart hangs the same images and one
 // copied again, from the line itself included, hangs once.
 //
-// The line slides down when an image is hung and goes back up once the
-// pointer has left it. `qs -c clipboard ipc call line toggle` brings it down
-// or sends it back.
+// The line slides down to show what was hung, and clicks pass through it:
+// it came down by itself, under a pointer that was on its way somewhere
+// else. `qs -c clipboard ipc call line toggle` brings it down to be used, or
+// sends it back; it goes back up once the pointer has left it.
 //
-// Click a photo to copy it · double click to open it · its cross lets it go.
+// Click a photo to copy it · its cross lets it go.
 
 import QtQuick
 import QtQuick.Effects
@@ -32,6 +33,9 @@ Scope {
     // [{ name, tilt }], oldest first: what hangs, not counting what is falling.
     property var items: []
     property bool revealed: false
+    // Brought down to be used, not to show what was hung: only then do the
+    // photos take the pointer.
+    property bool interactive: false
     property var targetScreen: Quickshell.screens[0]
     property string copiedName: ""
     // Bumped by the breeze; each photo sways when it changes.
@@ -49,13 +53,20 @@ Scope {
         return -1;
     }
 
-    function hangName(name) {
-        if (!Line.isName(name))
+    function saved(output) {
+        const saved = Line.parseSaved(output);
+        if (!saved)
             return;
+        if (saved.fits)
+            line.hangName(saved.name);
+        else if (!line.items.some(item => item.name === saved.name))
+            Quickshell.execDetached(["rm", "-f", "--", line.dir + "/" + saved.name]);
+    }
+
+    function hangName(name) {
         const result = Line.hang(line.items, name, Line.randomTilt());
         if (result.items === line.items) {
             line.nudged(name);
-            line.peek();
             return;
         }
         line.items = result.items;
@@ -90,15 +101,27 @@ Scope {
     }
 
     function copy(name) {
-        const ext = name.slice(name.indexOf(".") + 1);
-        Quickshell.execDetached(["sh", "-c", 'wl-copy --type "$2" < "$1"', "sh", line.dir + "/" + name, "image/" + ext]);
-        line.copiedName = name;
-        copiedReset.restart();
-        line.nudged(name);
+        if (copier.running)
+            return;
+        copier.name = name;
+        copier.command = ["sh", "-c", '[ -s "$1" ] || exit 3; wl-copy --type "$2" < "$1" > /dev/null 2>&1',
+                          "sh", line.dir + "/" + name, "image/" + name.slice(name.indexOf(".") + 1)];
+        copier.running = true;
     }
 
-    function open(name) {
-        Quickshell.execDetached(["xdg-open", line.dir + "/" + name]);
+    // A photo whose file is gone copies nothing: it falls instead.
+    Process {
+        id: copier
+        property string name: ""
+        onExited: code => {
+            if (code === 3) {
+                line.letGo(copier.name);
+            } else if (code === 0) {
+                line.copiedName = copier.name;
+                copiedReset.restart();
+                line.nudged(copier.name);
+            }
+        }
     }
 
     Timer {
@@ -109,32 +132,45 @@ Scope {
 
     // --- coming down and going back up --------------------------------------
 
+    // To show what was just hung. A line already down stays as it is.
     function peek() {
-        if (line.items.length === 0)
+        if (line.revealed) {
+            tuckAway.interval = Math.max(tuckAway.interval, 2500);
+            tuckAway.restart();
             return;
-        screenProbe.running = true;
-        line.revealed = true;
-        tuckAway.interval = 2500;
-        tuckAway.restart();
+        }
+        line.comeDown(false, 2500);
     }
 
     function toggle() {
-        if (line.revealed) {
+        if (line.revealed)
             line.revealed = false;
-            return;
-        }
-        if (line.items.length === 0)
-            return;
+        else
+            line.comeDown(true, line.items.length > 0 ? 6000 : 2500);
+    }
+
+    // On the output niri has focused: it is asked first, so the line does not
+    // come down on the last one and then jump.
+    function comeDown(interactive, hold) {
+        line.interactive = interactive;
+        tuckAway.interval = hold;
         screenProbe.running = true;
-        line.revealed = true;
-        tuckAway.interval = 6000;
-        tuckAway.restart();
+    }
+
+    onRevealedChanged: {
+        if (line.revealed) {
+            tuckAway.restart();
+            wind.interval = 1500 + Math.random() * 2500;
+            wind.restart();
+        } else {
+            line.interactive = false;
+        }
     }
 
     Timer {
         id: tuckAway
         onTriggered: {
-            if (!hover.hovered)
+            if (!(line.interactive && hover.hovered))
                 line.revealed = false;
         }
     }
@@ -147,7 +183,6 @@ Scope {
         }
     }
 
-    // The line comes down on the output niri has focused.
     Process {
         id: screenProbe
         command: ["niri", "msg", "--json", "focused-output"]
@@ -158,32 +193,48 @@ Scope {
                     const name = JSON.parse(screenOut.text).name;
                     line.targetScreen = Quickshell.screens.find(s => s.name === name) ?? line.targetScreen;
                 } catch (e) {}
+                line.revealed = true;
             }
         }
     }
 
     // --- hanging what is copied ----------------------------------------------
 
-    // Run by wl-paste for each copy with the image on stdin. The bytes are
-    // saved before they are named, so a half-written file never hangs.
+    // Run by wl-paste for each copy with the image on stdin. It prints
+    // `<name>\t<file --brief>` for an image to hang, and nothing otherwise.
+    // The bytes are saved before they are named, so a short write never
+    // hangs, and a file already there is left alone, so a photo copied from
+    // the line keeps its place in `ls -tr` and so after a restart.
+    //
+    // `.current` holds the hash of the image on the clipboard when the
+    // watcher started. wl-paste runs this at once for that image, which is
+    // not a copy: it would bring the line down at every start, and hang
+    // again an image let go of while it was still on the clipboard.
     readonly property string watchScript: '[ "$CLIPBOARD_STATE" = data ] || exit 0; '
         + 'wl-paste --list-types | grep -qxE "text/plain.*|UTF8_STRING|STRING|TEXT" && exit 0; '
-        + 'umask 077; mkdir -p "$1" || exit 1; '
         + 'f=$(mktemp "$1/.in.XXXXXX") || exit 1; '
-        + 'cat > "$f"; '
+        + 'trap \'rm -f "$f"\' EXIT; '
+        // Anything bigger is not a screenshot, and lives in RAM here.
+        + 'head -c 67108865 > "$f" || exit 1; '
+        + '[ "$(wc -c < "$f")" -le 67108864 ] || exit 0; '
         + 'case $(file --brief --mime-type "$f") in '
-        + 'image/png) e=png ;; image/jpeg) e=jpeg ;; image/gif) e=gif ;; image/bmp) e=bmp ;; image/webp) e=webp ;; '
-        + '*) rm -f "$f"; exit 0 ;; esac; '
+        + 'image/png) e=png ;; image/jpeg) e=jpeg ;; image/gif) e=gif ;; image/bmp) e=bmp ;; *) exit 0 ;; esac; '
         + 's=$(sha256sum < "$f"); s=${s%% *}; '
-        + 'mv -f "$f" "$1/$s.$e" && echo "$s.$e"'
+        + '{ read -r old _ < "$1/.current"; } 2>/dev/null; rm -f "$1/.current"; '
+        + '[ "$s" = "${old:-}" ] && exit 0; '
+        + '[ -e "$1/$s.$e" ] || mv "$f" "$1/$s.$e" || exit 1; '
+        + 'printf "%s\\t%s\\n" "$s.$e" "$(file --brief "$1/$s.$e")"'
 
     // Restarted when it dies, like the history's recorders.
     Process {
         id: watcher
         running: false
-        command: ["wl-paste", "--type", "image", "--watch", "sh", "-c", line.watchScript, "sh", line.dir]
+        command: ["sh", "-c", 'umask 077; mkdir -p "$1" || exit 1; '
+                  + 'wl-paste --type image 2>/dev/null | sha256sum > "$1/.current"; '
+                  + 'exec wl-paste --type image --watch sh -c "$2" sh "$1"',
+                  "sh", line.dir, line.watchScript]
         stdout: SplitParser {
-            onRead: data => line.hangName(data.trim())
+            onRead: data => line.saved(data)
         }
         onRunningChanged: {
             if (!watcher.running)
@@ -216,14 +267,15 @@ Scope {
         }
     }
 
-    // Every so often a little wind moves the line.
+    // Every so often a little wind moves the line: soon after it comes
+    // down, so a short look still sees it, then every 7 to 16 s.
     Timer {
-        interval: 7000 + Math.random() * 9000
-        running: line.revealed
+        id: wind
+        running: line.revealed && line.items.length > 0
         repeat: true
         onTriggered: {
             line.gust++;
-            interval = 7000 + Math.random() * 9000;
+            wind.interval = 7000 + Math.random() * 9000;
         }
     }
 
@@ -249,9 +301,10 @@ Scope {
         WlrLayershell.namespace: "clipboard-line"
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         color: "transparent"
-        // Clicks go through everywhere but on a photo.
+        // Clicks go through everywhere but on a photo, and everywhere when
+        // the line only came down to show what was hung.
         mask: Region {
-            regions: line.maskRegions
+            regions: line.interactive ? line.maskRegions : []
         }
 
         Item {
@@ -271,7 +324,7 @@ Scope {
             HoverHandler {
                 id: hover
                 onHoveredChanged: {
-                    if (!hover.hovered && line.revealed) {
+                    if (!hover.hovered && line.revealed && line.interactive) {
                         tuckAway.interval = 900;
                         tuckAway.restart();
                     }
@@ -280,6 +333,26 @@ Scope {
 
             Rope {
                 width: content.width
+            }
+
+            Rectangle {
+                visible: line.items.length === 0
+                x: Math.round((content.width - width) / 2)
+                y: Math.round(Line.ropeY(content.width / 2, content.width) + 18)
+                width: hint.implicitWidth + 24
+                height: 28
+                radius: 14
+                color: Qt.rgba(1, 1, 1, 0.88)
+                border.color: Qt.rgba(0, 0, 0, 0.10)
+
+                Text {
+                    id: hint
+                    anchors.centerIn: parent
+                    text: "Copy an image and it will hang here"
+                    font.pixelSize: 12
+                    font.weight: Font.Medium
+                    color: "#3d3846"
+                }
             }
 
             Repeater {
@@ -375,7 +448,6 @@ Scope {
     component Card: Item {
         id: card
 
-        required property int index
         required property string name
         required property real tilt
         required property bool arriving
@@ -388,13 +460,15 @@ Scope {
         readonly property real ropeAt: Line.ropeY(card.restX, content.width)
         readonly property var photo: Line.photoSize(image.implicitWidth, image.implicitHeight)
         readonly property bool hovered: mouse.containsMouse && !card.falling
-        // In window coordinates: a Region on `item: frame` only follows the
-        // frame's own geometry, not the card or the line moving it.
+        // In window coordinates, around the photo as drawn: a Region on
+        // `item: frame` only follows the frame's own geometry, not the card
+        // or the line moving it, nor the tilt and the swing.
+        readonly property var bounds: Line.frameBounds(frame.width, frame.height, frame.scale, card.rotation)
         readonly property QtObject maskRegion: Region {
-            x: card.x + frame.x
-            y: content.y + card.y + frame.y
-            width: card.falling ? 0 : frame.width
-            height: card.falling ? 0 : frame.height
+            x: Math.floor(card.x + card.bounds.x)
+            y: Math.floor(content.y + card.y + card.bounds.y)
+            width: card.falling ? 0 : Math.ceil(card.bounds.width) + 1
+            height: card.falling ? 0 : Math.ceil(card.bounds.height) + 1
         }
 
         // Degrees off plumb, from the swing, and its speed.
@@ -434,6 +508,7 @@ Scope {
         onFallingChanged: {
             if (card.falling) {
                 card.restX = card.restX;
+                arrive.stop();
                 fall.start();
             }
         }
@@ -504,7 +579,7 @@ Scope {
         Rectangle {
             id: frame
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 14
+            y: Line.FRAME_TOP
             width: card.photo.width + 2 * Line.INSET
             height: card.photo.height + 2 * Line.INSET
             radius: 16
@@ -541,7 +616,6 @@ Scope {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: line.copy(card.name)
-                onDoubleClicked: line.open(card.name)
             }
 
             // Lets the photo go: off the line, and its file with it.
@@ -570,6 +644,8 @@ Scope {
                 MouseArea {
                     id: closeArea
                     anchors.fill: parent
+                    // Only where it shows: a photo's corner is not a cross.
+                    enabled: card.hovered || closeArea.containsMouse
                     hoverEnabled: true
                     onClicked: line.letGo(card.name)
                 }
