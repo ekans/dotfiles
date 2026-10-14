@@ -14,7 +14,8 @@ pragma ComponentBehavior: Bound
 // else. `qs -c clipboard ipc call line toggle` brings it down to be used, or
 // sends it back; it goes back up once the pointer has left it.
 //
-// Click a photo to copy it · its cross lets it go.
+// Click a photo to copy it · drag it into an app to give it a copy · its
+// cross lets it go.
 
 import QtQuick
 import QtQuick.Effects
@@ -38,6 +39,9 @@ Scope {
     property bool interactive: false
     property var targetScreen: Quickshell.screens[0]
     property string copiedName: ""
+    // The portal's key for the photo pressed last: { name, key }.
+    property var lent: ({ name: "", key: "" })
+    property bool dragging: false
     // Bumped by the breeze; each photo sways when it changes.
     property int gust: 0
 
@@ -109,6 +113,55 @@ Scope {
         copier.running = true;
     }
 
+    // A drag offers the file's path, for apps that can read it, and a key
+    // from the document portal for sandboxed ones, which cannot. Qt orders
+    // the formats by name, so a Flatpak sees the key first.
+    function dragData(name, lent) {
+        const data = { "text/uri-list": "file://" + line.dir + "/" + name + "\r\n" };
+        if (lent.name === name && lent.key !== "")
+            data["application/vnd.portal.filetransfer"] = lent.key;
+        return data;
+    }
+
+    // On press, so the key is there by the time the pointer has moved far
+    // enough to start a drag.
+    function lend(name) {
+        line.lent = { name: name, key: "" };
+        lender.write(line.dir + "/" + name + "\n");
+    }
+
+    function dragEnded() {
+        line.dragging = false;
+        tuckAway.interval = 900;
+        tuckAway.restart();
+    }
+
+    // portal-transfer.py holds the keys: they last as long as it runs.
+    Process {
+        id: lender
+        running: true
+        stdinEnabled: true
+        command: ["/usr/bin/python3", String(Qt.resolvedUrl("portal-transfer.py")).replace("file://", "")]
+        stdout: SplitParser {
+            onRead: data => {
+                const tab = data.indexOf("\t");
+                const name = data.slice(data.lastIndexOf("/", tab) + 1, tab);
+                if (line.lent.name === name)
+                    line.lent = { name: name, key: data.slice(tab + 1).trim() };
+            }
+        }
+        onRunningChanged: {
+            if (!lender.running)
+                restartLender.restart();
+        }
+    }
+
+    Timer {
+        id: restartLender
+        interval: 1000
+        onTriggered: lender.running = true
+    }
+
     // A photo whose file is gone copies nothing: it falls instead.
     Process {
         id: copier
@@ -170,7 +223,7 @@ Scope {
     Timer {
         id: tuckAway
         onTriggered: {
-            if (!(line.interactive && hover.hovered))
+            if (!(line.interactive && (hover.hovered || line.dragging)))
                 line.revealed = false;
         }
     }
@@ -324,7 +377,7 @@ Scope {
             HoverHandler {
                 id: hover
                 onHoveredChanged: {
-                    if (!hover.hovered && line.revealed && line.interactive) {
+                    if (!hover.hovered && !line.dragging && line.revealed && line.interactive) {
                         tuckAway.interval = 900;
                         tuckAway.restart();
                     }
@@ -588,6 +641,7 @@ Scope {
             border.width: 1
             transformOrigin: Item.Top
             scale: mouse.pressed ? 0.97 : (card.hovered ? 1.035 : 1)
+            opacity: mouse.drag.active ? 0.45 : 1
 
             Behavior on scale {
                 NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
@@ -615,7 +669,35 @@ Scope {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                drag.target: dragProxy
+                onPressed: line.lend(card.name)
                 onClicked: line.copy(card.name)
+            }
+
+            // What is dragged: unseen, the platform draws the photo under the
+            // pointer. Copied, never moved, so the photo stays on the line.
+            Item {
+                id: dragProxy
+                width: frame.width
+                height: frame.height
+                Drag.dragType: Drag.Automatic
+                Drag.supportedActions: Qt.CopyAction
+                Drag.proposedAction: Qt.CopyAction
+                Drag.mimeData: line.dragData(card.name, line.lent)
+                Drag.imageSource: image.source
+                Drag.imageSourceSize: Qt.size(card.photo.width, card.photo.height)
+                Drag.hotSpot.x: card.photo.width / 2
+                Drag.hotSpot.y: card.photo.height / 2
+                Drag.active: mouse.drag.active
+                Drag.onActiveChanged: {
+                    if (dragProxy.Drag.active)
+                        line.dragging = true;
+                }
+                Drag.onDragFinished: {
+                    dragProxy.x = 0;
+                    dragProxy.y = 0;
+                    line.dragEnded();
+                }
             }
 
             // Lets the photo go: off the line, and its file with it.
