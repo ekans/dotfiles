@@ -111,6 +111,80 @@ export function frameBounds(w, h, scale, degrees) {
     };
 }
 
+// --- underpants -------------------------------------------------------------
+// The room the photos leave on the line is hung with underpants. Slots are
+// measured in from each edge, so the ones nearest the photos come and go as
+// the line fills while the outer ones never move. A seed, drawn once a
+// session, decides which slots hold a pair and what each one looks like.
+
+export const PANTS_WIDTH = 56;
+export const PANTS_HEIGHT = 44;
+const PANTS_GAP = 34;
+const EDGE = 40;
+// Clear of the photos, and of the hint an empty line shows.
+const CLEARANCE = 18;
+const HINT_HALF_WIDTH = 170;
+
+export const PANTS_COLORS = ["#f66151", "#62a0ea", "#f6d32d", "#57e389", "#c061cb", "#ffa348", "#ffffff", "#99c1f1"];
+export const PANTS_KINDS = ["briefs", "boxers"];
+export const PANTS_PATTERNS = ["plain", "dots", "stripes", "hearts"];
+
+// mulberry32: a small seeded generator, so a slot looks the same all session.
+export function random(seed) {
+    let a = seed >>> 0;
+    return function () {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function pick(next, list) {
+    return list[Math.floor(next() * list.length)];
+}
+
+// Every slot that holds a pair on a line `width` wide, left then right. A
+// slot's look depends on its side and its place from the edge only.
+export function pantsSlots(width, seed) {
+    const slots = [];
+    const step = PANTS_WIDTH + PANTS_GAP;
+    const perSide = Math.floor((width / 2 - EDGE) / step);
+    for (const side of [-1, 1]) {
+        for (let i = 0; i < perSide; i++) {
+            const next = random(seed ^ ((i + 1) * 2654435761) ^ (side > 0 ? 0x9e3779b9 : 0));
+            if (next() < 0.4)
+                continue;
+            const fromEdge = EDGE + i * step + PANTS_WIDTH / 2;
+            slots.push({
+                key: (side > 0 ? "r" : "l") + i,
+                x: side > 0 ? width - fromEdge : fromEdge,
+                kind: pick(next, PANTS_KINDS),
+                color: pick(next, PANTS_COLORS),
+                pattern: pick(next, PANTS_PATTERNS),
+                tilt: next() * 6 - 3,
+            });
+        }
+    }
+    return slots;
+}
+
+// The stretch of line the photos take, or the hint when there are none.
+export function occupied(width, count) {
+    if (count === 0)
+        return { from: width / 2 - HINT_HALF_WIDTH, to: width / 2 + HINT_HALF_WIDTH };
+    return {
+        from: cardX(0, count, width) - CARD_WIDTH / 2 - CLEARANCE,
+        to: cardX(count - 1, count, width) + CARD_WIDTH / 2 + CLEARANCE,
+    };
+}
+
+export function isFree(slot, width, count) {
+    const taken = occupied(width, count);
+    return slot.x + PANTS_WIDTH / 2 <= taken.from || slot.x - PANTS_WIDTH / 2 >= taken.to;
+}
+
 // Every image hangs a little crooked, like on a real line.
 export function randomTilt() {
     return Math.random() * 5 - 2.5;

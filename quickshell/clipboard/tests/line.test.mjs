@@ -11,6 +11,12 @@ import {
     dimensions,
     parseSaved,
     frameBounds,
+    PANTS_WIDTH,
+    PANTS_COLORS,
+    random,
+    pantsSlots,
+    occupied,
+    isFree,
     ropeY,
     cardX,
     photoSize,
@@ -139,4 +145,41 @@ test("a turned card's box holds every corner of its frame", () => {
     // Turned 90° about the clip, the frame lies to the left of it.
     const box = frameBounds(100, 50, 1, 90);
     assert.deepEqual([box.x, box.y, box.width, box.height].map(Math.round), [75 - 64, -50, 50, 100]);
+});
+
+test("the same seed draws the same numbers", () => {
+    const a = random(42);
+    const b = random(42);
+    const first = [a(), a(), a()];
+    assert.deepEqual([b(), b(), b()], first);
+    assert.ok(first.every(n => n >= 0 && n < 1));
+    assert.notDeepEqual([random(43)(), random(43)()], first.slice(0, 2));
+});
+
+test("underpants hang inside the edges, apart, the same all session", () => {
+    const slots = pantsSlots(1920, 7);
+    assert.ok(slots.length > 0);
+    assert.deepEqual(pantsSlots(1920, 7), slots);
+    for (const slot of slots) {
+        assert.ok(slot.x - PANTS_WIDTH / 2 >= 40 && slot.x + PANTS_WIDTH / 2 <= 1880, `x ${slot.x}`);
+        assert.ok(PANTS_COLORS.includes(slot.color));
+    }
+    const xs = slots.map(slot => slot.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++)
+        assert.ok(xs[i] - xs[i - 1] >= PANTS_WIDTH, `${xs[i - 1]} and ${xs[i]} overlap`);
+});
+
+test("a slot keeps its place and its look on a wider screen", () => {
+    const narrow = pantsSlots(1280, 7).filter(slot => slot.key.startsWith("l"));
+    const wide = pantsSlots(1920, 7).filter(slot => slot.key.startsWith("l"));
+    assert.deepEqual(wide.slice(0, narrow.length), narrow);
+});
+
+test("eight photos on 1920 leave 40 to 258 and 1662 to 1880 free", () => {
+    assert.deepEqual(occupied(1920, 8), { from: 258, to: 1662 });
+    assert.deepEqual(occupied(1920, 0), { from: 790, to: 1130 });
+    assert.equal(isFree({ x: 68 }, 1920, 8), true);
+    assert.equal(isFree({ x: 240 }, 1920, 8), false);
+    assert.equal(isFree({ x: 240 }, 1920, 1), true);
+    assert.equal(isFree({ x: 1852 }, 1920, 8), true);
 });

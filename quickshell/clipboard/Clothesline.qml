@@ -15,7 +15,7 @@ pragma ComponentBehavior: Bound
 // sends it back; it goes back up once the pointer has left it.
 //
 // Click a photo to copy it · drag it into an app to give it a copy · its
-// cross lets it go.
+// cross lets it go. What room the photos leave is hung with underpants.
 
 import QtQuick
 import QtQuick.Effects
@@ -44,6 +44,8 @@ Scope {
     property bool dragging: false
     // Bumped by the breeze; each photo sways when it changes.
     property int gust: 0
+    // Which underpants hang this session, and how they look.
+    readonly property int pantsSeed: Math.floor(Math.random() * 4294967296)
 
     ListModel {
         id: cards
@@ -409,6 +411,11 @@ Scope {
             }
 
             Repeater {
+                model: Line.pantsSlots(content.width, line.pantsSeed)
+                delegate: Underpants {}
+            }
+
+            Repeater {
                 id: cardRepeater
                 model: cards
                 onItemAdded: line.updateMask()
@@ -524,9 +531,6 @@ Scope {
             height: card.falling ? 0 : Math.ceil(card.bounds.height) + 1
         }
 
-        // Degrees off plumb, from the swing, and its speed.
-        property real swing: 0
-        property real velocity: 0
         property real drop: 0
 
         width: Line.CARD_WIDTH
@@ -534,8 +538,13 @@ Scope {
         x: card.restX - card.width / 2
         y: card.ropeAt - 9.5 + card.drop
         transformOrigin: Item.Top
-        rotation: card.tilt + card.swing
+        rotation: card.tilt + sway.angle
         opacity: 0
+
+        Swing {
+            id: sway
+            held: card.falling
+        }
 
         Behavior on restX {
             enabled: !card.falling
@@ -547,7 +556,7 @@ Scope {
                 card.opacity = 1;
                 return;
             }
-            card.swing = 16;
+            sway.angle = 16;
             card.drop = -46;
             arrive.start();
         }
@@ -570,53 +579,18 @@ Scope {
             id: fall
             ParallelAnimation {
                 NumberAnimation { target: card; property: "drop"; to: 320; duration: 450; easing.type: Easing.InQuad }
-                NumberAnimation { target: card; property: "swing"; to: card.tilt >= 0 ? 28 : -28; duration: 450; easing.type: Easing.InQuad }
+                NumberAnimation { target: sway; property: "angle"; to: card.tilt >= 0 ? 28 : -28; duration: 450; easing.type: Easing.InQuad }
                 NumberAnimation { target: card; property: "opacity"; to: 0; duration: 450; easing.type: Easing.InQuad }
             }
             ScriptAction { script: line.forget(card.name) }
-        }
-
-        // Pulled aside, then let swing back.
-        function nudge(degrees) {
-            if (card.falling)
-                return;
-            push.to = degrees;
-            push.restart();
-        }
-
-        NumberAnimation {
-            id: push
-            target: card
-            property: "swing"
-            duration: 300
-            easing.type: Easing.OutQuad
-            onFinished: card.velocity = 0
-        }
-
-        FrameAnimation {
-            running: !card.falling && !push.running && !Line.atRest({ angle: card.swing, velocity: card.velocity })
-            onTriggered: {
-                const next = Line.stepSwing({ angle: card.swing, velocity: card.velocity }, frameTime);
-                card.velocity = next.velocity;
-                card.swing = next.angle;
-            }
         }
 
         Connections {
             target: line
             function onNudged(name) {
                 if (name === card.name)
-                    card.nudge(3);
+                    sway.nudge(3);
             }
-            function onGustChanged() {
-                breeze.interval = Math.random() * 350;
-                breeze.restart();
-            }
-        }
-
-        Timer {
-            id: breeze
-            onTriggered: card.nudge(1.6 + Math.random() * 1.8)
         }
 
         RectangularShadow {
@@ -735,31 +709,8 @@ Scope {
         }
 
         // The clip, over the top edge of the photo.
-        Rectangle {
+        Clip {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 0
-            width: 9
-            height: 26
-            radius: 3.5
-            border.color: Qt.rgba(1, 1, 1, 0.7)
-            border.width: 0.6
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: Qt.rgba(0.70, 0.70, 0.70, 1) }
-                GradientStop { position: 0.35; color: Qt.rgba(0.93, 0.93, 0.93, 1) }
-                GradientStop { position: 0.65; color: Qt.rgba(0.82, 0.82, 0.82, 1) }
-                GradientStop { position: 1; color: Qt.rgba(0.62, 0.62, 0.62, 1) }
-            }
-
-            // The slot the line passes through.
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                y: 8.5
-                width: 5
-                height: 1.4
-                radius: 0.7
-                color: Qt.rgba(0, 0, 0, 0.32)
-            }
         }
 
         Rectangle {
@@ -782,6 +733,229 @@ Scope {
                 font.weight: Font.DemiBold
                 color: "#3d3846"
             }
+        }
+    }
+
+    // A swing about the top edge: pulled aside by `nudge`, let go on the
+    // damped spring in line.mjs, and stirred by the breeze. `angle` is in
+    // degrees off plumb.
+    component Swing: Item {
+        id: sway
+
+        property real angle: 0
+        property real velocity: 0
+        property bool held: false
+        // How far the breeze moves it.
+        property real give: 1
+
+        function nudge(degrees) {
+            if (sway.held)
+                return;
+            push.to = degrees;
+            push.restart();
+        }
+
+        NumberAnimation {
+            id: push
+            target: sway
+            property: "angle"
+            duration: 300
+            easing.type: Easing.OutQuad
+            onFinished: sway.velocity = 0
+        }
+
+        FrameAnimation {
+            running: !sway.held && !push.running && !Line.atRest({ angle: sway.angle, velocity: sway.velocity })
+            onTriggered: {
+                const next = Line.stepSwing({ angle: sway.angle, velocity: sway.velocity }, frameTime);
+                sway.velocity = next.velocity;
+                sway.angle = next.angle;
+            }
+        }
+
+        Connections {
+            target: line
+            function onGustChanged() {
+                breeze.interval = Math.random() * 350;
+                breeze.restart();
+            }
+        }
+
+        Timer {
+            id: breeze
+            onTriggered: sway.nudge((1.6 + Math.random() * 1.8) * sway.give)
+        }
+    }
+
+    // A minimal aluminium clip, with the slot the line passes through.
+    component Clip: Rectangle {
+        y: 0
+        width: 9
+        height: 26
+        radius: 3.5
+        border.color: Qt.rgba(1, 1, 1, 0.7)
+        border.width: 0.6
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0; color: Qt.rgba(0.70, 0.70, 0.70, 1) }
+            GradientStop { position: 0.35; color: Qt.rgba(0.93, 0.93, 0.93, 1) }
+            GradientStop { position: 0.65; color: Qt.rgba(0.82, 0.82, 0.82, 1) }
+            GradientStop { position: 1; color: Qt.rgba(0.62, 0.62, 0.62, 1) }
+        }
+
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 8.5
+            width: 5
+            height: 1.4
+            radius: 0.7
+            color: Qt.rgba(0, 0, 0, 0.32)
+        }
+    }
+
+    // A pair of underpants in a gap the photos left, pegged at both
+    // corners. Only to look at: clicks go through them.
+    component Underpants: Item {
+        id: pants
+
+        required property var modelData
+
+        readonly property real w: Line.PANTS_WIDTH
+        readonly property real h: Line.PANTS_HEIGHT
+        readonly property bool boxers: pants.modelData.kind === "boxers"
+        readonly property color cloth: pants.modelData.color
+        readonly property color accent: pants.modelData.color === "#ffffff" ? "#f66151" : Qt.rgba(1, 1, 1, 0.8)
+        readonly property bool free: Line.isFree(pants.modelData, content.width, line.items.length)
+        readonly property string outline: pants.boxers
+            ? "M 4 0 L 52 0 L 56 38 Q 56 42 52 42 L 33 42 L 28 22 L 23 42 L 4 42 Q 0 42 0 38 Z"
+            : "M 0 0 L 56 0 L 56 12 C 46 16 37 26 34 40 L 22 40 C 19 26 10 16 0 12 Z"
+
+        width: pants.w
+        height: pants.h + 12
+        x: pants.modelData.x - pants.w / 2
+        y: Line.ropeY(pants.modelData.x, content.width) - 9.5
+        transformOrigin: Item.Top
+        rotation: pants.modelData.tilt + sway.angle
+        opacity: pants.free ? 1 : 0
+        visible: pants.opacity > 0
+
+        Behavior on opacity {
+            NumberAnimation { duration: 260; easing.type: Easing.InOutQuad }
+        }
+
+        Swing {
+            id: sway
+            give: 0.6
+        }
+
+        // The cloth: colour, waistband and pattern, cut to shape below.
+        Item {
+            id: fabric
+            y: 12
+            width: pants.w
+            height: pants.h
+            visible: false
+            layer.enabled: true
+
+            Rectangle {
+                anchors.fill: parent
+                color: pants.cloth
+            }
+
+            Rectangle {
+                width: parent.width
+                height: 7
+                color: Qt.darker(pants.cloth, 1.18)
+            }
+
+            Grid {
+                y: 10
+                x: 3
+                columns: 6
+                columnSpacing: 4
+                rowSpacing: 4
+                visible: pants.modelData.pattern === "dots"
+                Repeater {
+                    model: 24
+                    Rectangle { width: 5; height: 5; radius: 2.5; color: pants.accent }
+                }
+            }
+
+            Row {
+                y: 7
+                x: 2
+                spacing: 5
+                visible: pants.modelData.pattern === "stripes"
+                Repeater {
+                    model: 7
+                    Rectangle { width: 3; height: pants.h; color: pants.accent }
+                }
+            }
+
+            Grid {
+                y: 9
+                x: 2
+                columns: 5
+                columnSpacing: 2
+                visible: pants.modelData.pattern === "hearts"
+                Repeater {
+                    model: 15
+                    Text { text: "♥"; font.pixelSize: 9; color: pants.accent }
+                }
+            }
+        }
+
+        Shape {
+            id: cut
+            y: 12
+            width: pants.w
+            height: pants.h
+            visible: false
+            layer.enabled: true
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                fillColor: "black"
+                strokeColor: "transparent"
+                PathSvg {
+                    path: pants.outline
+                }
+            }
+        }
+
+        MultiEffect {
+            y: 12
+            width: pants.w
+            height: pants.h
+            source: fabric
+            maskEnabled: true
+            maskSource: cut
+            // A padded effect stretches the mask out of line with the cloth.
+            autoPaddingEnabled: false
+        }
+
+        Shape {
+            y: 12
+            width: pants.w
+            height: pants.h
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+                fillColor: "transparent"
+                strokeColor: Qt.darker(pants.cloth, 1.35)
+                strokeWidth: 1
+                PathSvg {
+                    path: pants.outline
+                }
+            }
+        }
+
+        Clip {
+            x: 8
+        }
+
+        Clip {
+            x: pants.w - 17
         }
     }
 }
