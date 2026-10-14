@@ -1,5 +1,5 @@
 // What the keyboard shortcuts panel shows (`qs -c chauvenity ipc call keys
-// toggle`, Mod+Shift+/ in ~/.config/niri/config.kdl): niri's binds, read from
+// toggle`, Super+Space ? in the leader menu): niri's binds, read from
 // its config files the way niri reads them, grouped and worded for reading.
 //
 // Plain ECMAScript, no QML: the bar imports it and tests/keys.test.mjs runs it

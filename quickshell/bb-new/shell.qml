@@ -4,9 +4,9 @@ pragma ComponentBehavior: Bound
 // the model, the effort, the project and poteto mode the thread starts with —
 // the newest Opus, high, no project, poteto off, until Ctrl+S saves others.
 //
-// The overlay opens over IPC, bound in ~/.config/niri/config.kdl:
+// The overlay opens over IPC, from Super+Space b n in chauvenity's leader menu:
 //
-//     qs -c bb-new ipc call bbnew toggle             Mod+N
+//     qs -c bb-new ipc call bbnew toggle
 //
 // and the defaults can be read and set the same way:
 //
@@ -208,7 +208,7 @@ ShellRoot {
         open: root.open
     }
 
-    // Lets pick-to-bb (Mod+Shift+A) describe the overlay's elements.
+    // Lets pick-to-bb (Super+Space b a) describe the overlay's elements.
     PickInspector {
         roots: [overlay]
     }

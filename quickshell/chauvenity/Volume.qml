@@ -6,7 +6,7 @@ pragma ComponentBehavior: Bound
 // Muted keeps the level, struck out; above 100 % it turns the warn colour.
 // The wheel steps it 5 % at a time, a middle click mutes, and a click opens
 // VolumePanel, where the keyboard steps, mutes and picks the output too, and
-// the microphone with Shift (Mod+B then V opens it).
+// the microphone with Shift (Super+Space h then V opens it).
 
 import QtQuick
 import Quickshell

@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
-// Mod+E's translator, all of it, in a panel on the right of the output Mod+E
-// was pressed on (Translator.qml has the whole story). Its header names the
+// Super+Space t's translator, all of it, in a panel on the right of the output
+// it was opened on (Translator.qml has the whole story). Its header names the
 // mode and the text it works on; under it, what the stage needs: what each
 // mode would do with the selection, the word being typed, a word's senses,
 // the paragraph's translation, the fix's changes with why, or how it went.
@@ -111,7 +111,7 @@ PanelWindow {
         case "fix":
             return `Tab ↓ j next · ⇧Tab ↑ k back · Space keep yours · ↵ apply · ${others} · Esc drop`;
         default:
-            return "Mod+E closes";
+            return "Super+Space t t closes";
         }
     }
 

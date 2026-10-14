@@ -2,9 +2,8 @@
 // order its pages show them. leader.mjs says what an entry can hold; Quickshell
 // reloads the bar when this file is saved, and tests/leader.test.mjs checks it.
 //
-// Every pick runs a command once the menu has given the keyboard back, so a
-// plugin is reached the way its niri bind reaches it, and those binds
-// (Mod+N, Mod+G, Mod+T, …) still work on their own.
+// Every pick runs a command once the menu has given the keyboard back, and
+// this is the only way to a plugin: none has a niri bind of its own.
 
 // `qs -c <config> ipc call <target> <function> <args…>`
 function qs(config, target, fn) {

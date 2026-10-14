@@ -5,7 +5,7 @@ import Quickshell.Wayland
 
 // Which open overlay gets the keyboard. When two overlays ask for it
 // exclusively, niri draws the one opened last on top but sends the keys to the
-// one opened first, so Mod+Shift+V over bb-new showed the clipboard and typed
+// one opened first, so Super+Space v v over bb-new showed the clipboard and typed
 // into bb-new. The open overlays keep a stack of their names in
 // $XDG_RUNTIME_DIR/quickshell-overlays, newest last, and only the newest asks
 // for the keyboard. The ones below keep their state and get it back in turn.

@@ -23,53 +23,13 @@ binds {
     // no current mode.
     F1 allow-when-locked=true hotkey-overlay-title="Turn the laptop screen off or on" { spawn-sh r#"niri msg output eDP-1 "$(niri msg -j outputs | jq -r '.["eDP-1"].current_mode | if . == null then "on" else "off" end')""#; }
 
-    // One key to every plugin below, then a key at a time, the way Spacemacs
-    // does it: b bb, v clipboard, s snippets, t translate, o a bar panel,
-    // h the bar's hints, ? these shortcuts. Typed without a pause, nothing
-    // shows; after one, a strip with the next keys. Lives in
-    // ~/.config/quickshell/chauvenity (Leader.qml, the keys in
-    // leader-menu.mjs); the binds below still work on their own.
+    // One key to every plugin, then a key at a time, the way Spacemacs does
+    // it: b bb, v clipboard, s snippets, t translate, n notifications,
+    // c caffeine, o a bar panel, h the bar's hints, ? the shortcuts. Typed
+    // without a pause, nothing shows; after one, a strip with the next keys.
+    // Lives in ~/.config/quickshell/chauvenity (Leader.qml, the keys in
+    // leader-menu.mjs).
     Mod+Space hotkey-overlay-title="Leader menu" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "leader" "toggle"; }
-
-    // Pick a UI element, a region, a window or the screen, write a prompt,
-    // start a bb thread about it.
-    Mod+Shift+A hotkey-overlay-title="Ask bb about a UI element or screenshot" { spawn "/var/home/ducatore/.local/bin/pick-to-bb"; }
-
-    // Write a prompt, start a bb thread: Opus 5.5, high, no project, unless
-    // changed with Alt+M/E/P/T (Ctrl+S saves the change as the default). The
-    // overlay lives in ~/.config/quickshell/bb-new.
-    Mod+N hotkey-overlay-title="New bb thread" { spawn "/usr/bin/qs" "-c" "bb-new" "ipc" "call" "bbnew" "toggle"; }
-
-    // Go somewhere in bb: the threads that need you, then the sidebar, the
-    // settings and the projects; Enter sends the open bb tab there and raises
-    // its window. The overlay lives in ~/.config/quickshell/bb-go.
-    Mod+G hotkey-overlay-title="Go to in bb" { spawn "/usr/bin/qs" "-c" "bb-go" "ipc" "call" "bbgo" "toggle"; }
-
-    // Clipboard history; the overlay lives in ~/.config/quickshell/clipboard.
-    Mod+Shift+V hotkey-overlay-title="Clipboard history" { spawn "/usr/bin/qs" "-c" "clipboard" "ipc" "call" "clipboard" "toggle"; }
-    Mod+Shift+C hotkey-overlay-title="Copied images line" { spawn "/usr/bin/qs" "-c" "clipboard" "ipc" "call" "line" "toggle"; }
-
-    // Text snippets; the overlay lives in ~/.config/quickshell/snippets.
-    Mod+T hotkey-overlay-title="Snippets" { spawn "/usr/bin/qs" "-c" "snippets" "ipc" "call" "snippets" "toggle"; }
-    Mod+Shift+T hotkey-overlay-title="New snippet from the selection" { spawn "/usr/bin/qs" "-c" "snippets" "ipc" "call" "snippets" "capture"; }
-
-    // Notifications are the bar's own (~/.config/quickshell/chauvenity):
-    // do-not-disturb lets only critical ones pop up, Escape puts the one in
-    // the island away; both stay in the bell's panel.
-    Mod+Shift+N hotkey-overlay-title="Do not disturb" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "notifications" "dnd"; }
-    Mod+Escape hotkey-overlay-title="Put the notification away" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "notifications" "close"; }
-
-    // Keyboard shortcuts, grouped and in columns, in place of niri's
-    // one-column list; the panel lives in ~/.config/quickshell/chauvenity.
-    Mod+Shift+Slash hotkey-overlay-title="Keyboard shortcuts" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "keys" "toggle"; }
-
-    // A key over each bar item; the next key picks one. The bar lives in
-    // ~/.config/quickshell/chauvenity.
-    Mod+B hotkey-overlay-title="Pick a bar item from the keyboard" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "bar" "hints"; }
-
-    // French into English, and English made simple: the next key picks the
-    // mode, w word, p paragraph, f fix. Lives in ~/.config/quickshell/chauvenity.
-    Mod+E hotkey-overlay-title="Translate or fix the selection" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "translate" "choose"; }
 }
 
 // The wallpaper is the bar's own (~/.config/quickshell/chauvenity,

@@ -10,11 +10,11 @@ pragma ComponentBehavior: Bound
 // the values last typed into its fields are kept in state.json under
 // Quickshell.stateDir.
 //
-// The overlay opens over IPC, bound in ~/.config/niri/config.kdl:
+// The overlay opens over IPC, from Super+Space s in chauvenity's leader menu:
 //
-//     qs -c snippets ipc call snippets toggle         Mod+T
-//     qs -c snippets ipc call snippets capture        Mod+Shift+T, a new snippet
-//                                                     from the selection
+//     qs -c snippets ipc call snippets toggle         Super+Space s s
+//     qs -c snippets ipc call snippets capture        Super+Space s c, a new
+//                                                     snippet from the selection
 //     qs -c snippets ipc call snippets paste <name>   one snippet, the form
 //                                                     only if a field is empty
 //
@@ -118,7 +118,7 @@ ShellRoot {
     property string newBody: ""
     property var spots: []
     property var spotState: ({})
-    // Opened by Mod+Shift+T, so Esc closes rather than going to the search.
+    // Opened by Super+Space s c, so Esc closes rather than going to the search.
     property bool newFromCapture: false
     readonly property string newKeywordProblem: root.stage === "new" ? Snip.keywordProblem(root.draft.keyword, root.snippets) : ""
 
@@ -227,7 +227,7 @@ ShellRoot {
         open: root.open
     }
 
-    // Lets pick-to-bb (Mod+Shift+A) describe the overlay's elements.
+    // Lets pick-to-bb (Super+Space b a) describe the overlay's elements.
     PickInspector {
         roots: [overlay]
     }

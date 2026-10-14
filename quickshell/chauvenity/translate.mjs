@@ -1,4 +1,4 @@
-// What Mod+E's translator decides (Translator.qml): which key picks which
+// What Super+Space t's translator decides (Translator.qml): which key picks which
 // mode, what translate.sh's answers say, and the text that goes back once the
 // fix's changes are kept or dropped.
 //

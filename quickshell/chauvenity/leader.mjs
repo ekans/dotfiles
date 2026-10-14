@@ -13,7 +13,7 @@
 //                             changed, else "": the command's own default.
 //     children: [entries]     a page of its own
 //     bar: [argv]             a page of the bar's items, a key each, the
-//                             letters Mod+B gives them; "{item}" in the
+//                             letters Super+Space h gives them; "{item}" in the
 //                             command is the item's name
 //
 // and, on an entry with children, optionally
