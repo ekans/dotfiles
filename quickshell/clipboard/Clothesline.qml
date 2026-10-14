@@ -1,0 +1,629 @@
+pragma ComponentBehavior: Bound
+
+// Copied images, hung on a line under the bar, after Tendedero
+// (https://github.com/alejandrobujan/tendedero).
+//
+// Each image copied, and nothing copied with text alongside it (a spreadsheet
+// copies its cells as both), is saved as `<sha256>.<ext>` in
+// $XDG_RUNTIME_DIR/clipboard-line. That folder is the line: oldest file
+// first, at most Line.MAX_ITEMS, so a restart hangs the same images and one
+// copied again, from the line itself included, hangs once.
+//
+// The line slides down when an image is hung and goes back up once the
+// pointer has left it. `qs -c clipboard ipc call line toggle` brings it down
+// or sends it back.
+//
+// Click a photo to copy it · double click to open it · its cross lets it go.
+
+import QtQuick
+import QtQuick.Effects
+import QtQuick.Shapes
+import Quickshell
+import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Widgets
+import "line.mjs" as Line
+
+Scope {
+    id: line
+
+    readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/clipboard-line"
+
+    // [{ name, tilt }], oldest first: what hangs, not counting what is falling.
+    property var items: []
+    property bool revealed: false
+    property var targetScreen: Quickshell.screens[0]
+    property string copiedName: ""
+    // Bumped by the breeze; each photo sways when it changes.
+    property int gust: 0
+
+    ListModel {
+        id: cards
+    }
+
+    function indexOf(name) {
+        for (let i = 0; i < cards.count; i++) {
+            if (cards.get(i).name === name)
+                return i;
+        }
+        return -1;
+    }
+
+    function hangName(name) {
+        if (!Line.isName(name))
+            return;
+        const result = Line.hang(line.items, name, Line.randomTilt());
+        if (result.items === line.items) {
+            line.nudged(name);
+            line.peek();
+            return;
+        }
+        line.items = result.items;
+        for (const dropped of result.dropped)
+            line.letGo(dropped);
+        cards.append({ name: name, tilt: result.items[result.items.length - 1].tilt, arriving: true, falling: false });
+        line.peek();
+    }
+
+    signal nudged(string name)
+
+    function letGo(name) {
+        line.items = line.items.filter(item => item.name !== name);
+        const i = line.indexOf(name);
+        if (i >= 0)
+            cards.setProperty(i, "falling", true);
+        Quickshell.execDetached(["rm", "-f", "--", line.dir + "/" + name]);
+    }
+
+    function forget(name) {
+        const i = line.indexOf(name);
+        if (i >= 0)
+            cards.remove(i);
+    }
+
+    // The clipboard history's wipe takes the line down with it.
+    function clear() {
+        line.items = [];
+        cards.clear();
+        line.revealed = false;
+        Quickshell.execDetached(["rm", "-rf", "--", line.dir]);
+    }
+
+    function copy(name) {
+        const ext = name.slice(name.indexOf(".") + 1);
+        Quickshell.execDetached(["sh", "-c", 'wl-copy --type "$2" < "$1"', "sh", line.dir + "/" + name, "image/" + ext]);
+        line.copiedName = name;
+        copiedReset.restart();
+        line.nudged(name);
+    }
+
+    function open(name) {
+        Quickshell.execDetached(["xdg-open", line.dir + "/" + name]);
+    }
+
+    Timer {
+        id: copiedReset
+        interval: 1200
+        onTriggered: line.copiedName = ""
+    }
+
+    // --- coming down and going back up --------------------------------------
+
+    function peek() {
+        if (line.items.length === 0)
+            return;
+        screenProbe.running = true;
+        line.revealed = true;
+        tuckAway.interval = 2500;
+        tuckAway.restart();
+    }
+
+    function toggle() {
+        if (line.revealed) {
+            line.revealed = false;
+            return;
+        }
+        if (line.items.length === 0)
+            return;
+        screenProbe.running = true;
+        line.revealed = true;
+        tuckAway.interval = 6000;
+        tuckAway.restart();
+    }
+
+    Timer {
+        id: tuckAway
+        onTriggered: {
+            if (!hover.hovered)
+                line.revealed = false;
+        }
+    }
+
+    IpcHandler {
+        target: "line"
+
+        function toggle(): void {
+            line.toggle();
+        }
+    }
+
+    // The line comes down on the output niri has focused.
+    Process {
+        id: screenProbe
+        command: ["niri", "msg", "--json", "focused-output"]
+        stdout: StdioCollector {
+            id: screenOut
+            onStreamFinished: {
+                try {
+                    const name = JSON.parse(screenOut.text).name;
+                    line.targetScreen = Quickshell.screens.find(s => s.name === name) ?? line.targetScreen;
+                } catch (e) {}
+            }
+        }
+    }
+
+    // --- hanging what is copied ----------------------------------------------
+
+    // Run by wl-paste for each copy with the image on stdin. The bytes are
+    // saved before they are named, so a half-written file never hangs.
+    readonly property string watchScript: '[ "$CLIPBOARD_STATE" = data ] || exit 0; '
+        + 'wl-paste --list-types | grep -qxE "text/plain.*|UTF8_STRING|STRING|TEXT" && exit 0; '
+        + 'umask 077; mkdir -p "$1" || exit 1; '
+        + 'f=$(mktemp "$1/.in.XXXXXX") || exit 1; '
+        + 'cat > "$f"; '
+        + 'case $(file --brief --mime-type "$f") in '
+        + 'image/png) e=png ;; image/jpeg) e=jpeg ;; image/gif) e=gif ;; image/bmp) e=bmp ;; image/webp) e=webp ;; '
+        + '*) rm -f "$f"; exit 0 ;; esac; '
+        + 's=$(sha256sum < "$f"); s=${s%% *}; '
+        + 'mv -f "$f" "$1/$s.$e" && echo "$s.$e"'
+
+    // Restarted when it dies, like the history's recorders.
+    Process {
+        id: watcher
+        running: false
+        command: ["wl-paste", "--type", "image", "--watch", "sh", "-c", line.watchScript, "sh", line.dir]
+        stdout: SplitParser {
+            onRead: data => line.hangName(data.trim())
+        }
+        onRunningChanged: {
+            if (!watcher.running)
+                restartWatcher.restart();
+        }
+    }
+
+    Timer {
+        id: restartWatcher
+        interval: 1000
+        onTriggered: watcher.running = true
+    }
+
+    // What hung before a restart hangs again, quietly, before the watcher
+    // starts: the clipboard's current image would otherwise hang twice.
+    Process {
+        running: true
+        command: ["sh", "-c", 'cd "$1" 2>/dev/null && rm -f .in.* && ls -1tr', "sh", line.dir]
+        stdout: StdioCollector {
+            id: restored
+            onStreamFinished: {
+                const result = Line.restore(restored.text, () => Line.randomTilt());
+                line.items = result.items;
+                for (const item of result.items)
+                    cards.append({ name: item.name, tilt: item.tilt, arriving: false, falling: false });
+                for (const name of result.dropped)
+                    Quickshell.execDetached(["rm", "-f", "--", line.dir + "/" + name]);
+                watcher.running = true;
+            }
+        }
+    }
+
+    // Every so often a little wind moves the line.
+    Timer {
+        interval: 7000 + Math.random() * 9000
+        running: line.revealed
+        repeat: true
+        onTriggered: {
+            line.gust++;
+            interval = 7000 + Math.random() * 9000;
+        }
+    }
+
+    // --- the line --------------------------------------------------------------
+
+    PanelWindow {
+        id: win
+
+        readonly property real hiddenY: -(Line.PANEL_HEIGHT + 12)
+
+        screen: line.targetScreen
+        visible: line.revealed || content.y > win.hiddenY + 0.5
+        anchors {
+            top: true
+            left: true
+            right: true
+        }
+        implicitHeight: Line.PANEL_HEIGHT
+        // Below the bar's exclusive zone, and leaving windows where they are.
+        exclusionMode: ExclusionMode.Normal
+        exclusiveZone: 0
+        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.namespace: "clipboard-line"
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        color: "transparent"
+        // Clicks go through everywhere but on a photo.
+        mask: Region {
+            regions: line.maskRegions
+        }
+
+        Item {
+            id: content
+            width: win.width
+            height: Line.PANEL_HEIGHT
+            y: line.revealed ? 0 : win.hiddenY
+
+            Behavior on y {
+                NumberAnimation {
+                    duration: line.revealed ? 420 : 220
+                    easing.type: line.revealed ? Easing.OutBack : Easing.InCubic
+                    easing.overshoot: 0.9
+                }
+            }
+
+            HoverHandler {
+                id: hover
+                onHoveredChanged: {
+                    if (!hover.hovered && line.revealed) {
+                        tuckAway.interval = 900;
+                        tuckAway.restart();
+                    }
+                }
+            }
+
+            Rope {
+                width: content.width
+            }
+
+            Repeater {
+                id: cardRepeater
+                model: cards
+                onItemAdded: line.updateMask()
+                onItemRemoved: line.updateMask()
+
+                delegate: Card {}
+            }
+        }
+    }
+
+    property var maskRegions: []
+
+    function updateMask() {
+        const regions = [];
+        for (let i = 0; i < cardRepeater.count; i++) {
+            const card = cardRepeater.itemAt(i);
+            if (card)
+                regions.push(card.maskRegion);
+        }
+        line.maskRegions = regions;
+    }
+
+    // A thin neutral line with a soft shadow, fading out at both ends so it
+    // seems to come from beyond the screen.
+    component Rope: Item {
+        id: rope
+        height: Line.ROPE_TOP + 2 * Line.sag(rope.width) + 4
+
+        Shape {
+            id: strands
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            visible: false
+            layer.enabled: true
+
+            ShapePath {
+                strokeColor: Qt.rgba(0, 0, 0, 0.22)
+                strokeWidth: 1.6
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                startX: -20
+                startY: Line.ROPE_TOP
+                PathQuad {
+                    x: rope.width + 20
+                    y: Line.ROPE_TOP
+                    controlX: rope.width / 2
+                    controlY: Line.ROPE_TOP + 2 * Line.sag(rope.width)
+                }
+            }
+            ShapePath {
+                strokeColor: Qt.rgba(0.55, 0.55, 0.55, 1)
+                strokeWidth: 1.2
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                startX: -20
+                startY: Line.ROPE_TOP
+                PathQuad {
+                    x: rope.width + 20
+                    y: Line.ROPE_TOP
+                    controlX: rope.width / 2
+                    controlY: Line.ROPE_TOP + 2 * Line.sag(rope.width)
+                }
+            }
+        }
+
+        Rectangle {
+            id: fade
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "transparent" }
+                GradientStop { position: 0.08; color: "black" }
+                GradientStop { position: 0.92; color: "black" }
+                GradientStop { position: 1; color: "transparent" }
+            }
+        }
+
+        MultiEffect {
+            anchors.fill: parent
+            source: strands
+            maskEnabled: true
+            maskSource: fade
+        }
+    }
+
+    // One photo with its clip. It drops onto the line, swings, sways with
+    // the breeze and falls when let go.
+    component Card: Item {
+        id: card
+
+        required property int index
+        required property string name
+        required property real tilt
+        required property bool arriving
+        required property bool falling
+
+        readonly property int live: line.items.findIndex(item => item.name === card.name)
+        readonly property real centerX: Line.cardX(Math.max(0, card.live), line.items.length, content.width)
+        // Where it hangs; frozen when it falls.
+        property real restX: card.centerX
+        readonly property real ropeAt: Line.ropeY(card.restX, content.width)
+        readonly property var photo: Line.photoSize(image.implicitWidth, image.implicitHeight)
+        readonly property bool hovered: mouse.containsMouse && !card.falling
+        // In window coordinates: a Region on `item: frame` only follows the
+        // frame's own geometry, not the card or the line moving it.
+        readonly property QtObject maskRegion: Region {
+            x: card.x + frame.x
+            y: content.y + card.y + frame.y
+            width: card.falling ? 0 : frame.width
+            height: card.falling ? 0 : frame.height
+        }
+
+        // Degrees off plumb, from the swing, and its speed.
+        property real swing: 0
+        property real velocity: 0
+        property real drop: 0
+
+        width: Line.CARD_WIDTH
+        height: Line.PANEL_HEIGHT
+        x: card.restX - card.width / 2
+        y: card.ropeAt - 9.5 + card.drop
+        transformOrigin: Item.Top
+        rotation: card.tilt + card.swing
+        opacity: 0
+
+        Behavior on restX {
+            enabled: !card.falling
+            SpringAnimation { spring: 3; damping: 0.3 }
+        }
+
+        Component.onCompleted: {
+            if (!card.arriving) {
+                card.opacity = 1;
+                return;
+            }
+            card.swing = 16;
+            card.drop = -46;
+            arrive.start();
+        }
+
+        ParallelAnimation {
+            id: arrive
+            NumberAnimation { target: card; property: "drop"; to: 0; duration: 420; easing.type: Easing.OutBack }
+            NumberAnimation { target: card; property: "opacity"; to: 1; duration: 160 }
+        }
+
+        onFallingChanged: {
+            if (card.falling) {
+                card.restX = card.restX;
+                fall.start();
+            }
+        }
+
+        SequentialAnimation {
+            id: fall
+            ParallelAnimation {
+                NumberAnimation { target: card; property: "drop"; to: 320; duration: 450; easing.type: Easing.InQuad }
+                NumberAnimation { target: card; property: "swing"; to: card.tilt >= 0 ? 28 : -28; duration: 450; easing.type: Easing.InQuad }
+                NumberAnimation { target: card; property: "opacity"; to: 0; duration: 450; easing.type: Easing.InQuad }
+            }
+            ScriptAction { script: line.forget(card.name) }
+        }
+
+        // Pulled aside, then let swing back.
+        function nudge(degrees) {
+            if (card.falling)
+                return;
+            push.to = degrees;
+            push.restart();
+        }
+
+        NumberAnimation {
+            id: push
+            target: card
+            property: "swing"
+            duration: 300
+            easing.type: Easing.OutQuad
+            onFinished: card.velocity = 0
+        }
+
+        FrameAnimation {
+            running: !card.falling && !push.running && !Line.atRest({ angle: card.swing, velocity: card.velocity })
+            onTriggered: {
+                const next = Line.stepSwing({ angle: card.swing, velocity: card.velocity }, frameTime);
+                card.velocity = next.velocity;
+                card.swing = next.angle;
+            }
+        }
+
+        Connections {
+            target: line
+            function onNudged(name) {
+                if (name === card.name)
+                    card.nudge(3);
+            }
+            function onGustChanged() {
+                breeze.interval = Math.random() * 350;
+                breeze.restart();
+            }
+        }
+
+        Timer {
+            id: breeze
+            onTriggered: card.nudge(1.6 + Math.random() * 1.8)
+        }
+
+        RectangularShadow {
+            anchors.fill: frame
+            radius: frame.radius
+            offset.y: card.hovered ? 8 : 5
+            blur: card.hovered ? 28 : 20
+            color: Qt.rgba(0, 0, 0, card.hovered ? 0.30 : 0.20)
+            scale: frame.scale
+            transformOrigin: Item.Top
+        }
+
+        Rectangle {
+            id: frame
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 14
+            width: card.photo.width + 2 * Line.INSET
+            height: card.photo.height + 2 * Line.INSET
+            radius: 16
+            color: Qt.rgba(1, 1, 1, 0.82)
+            border.color: Qt.rgba(1, 1, 1, 0.9)
+            border.width: 1
+            transformOrigin: Item.Top
+            scale: mouse.pressed ? 0.97 : (card.hovered ? 1.035 : 1)
+
+            Behavior on scale {
+                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            }
+
+            ClippingRectangle {
+                anchors.fill: parent
+                anchors.margins: Line.INSET
+                radius: frame.radius - Line.INSET
+                color: "transparent"
+
+                Image {
+                    id: image
+                    anchors.fill: parent
+                    source: "file://" + line.dir + "/" + card.name
+                    sourceSize.width: 2 * Line.CARD_WIDTH
+                    asynchronous: true
+                    smooth: true
+                    mipmap: true
+                }
+            }
+
+            MouseArea {
+                id: mouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: line.copy(card.name)
+                onDoubleClicked: line.open(card.name)
+            }
+
+            // Lets the photo go: off the line, and its file with it.
+            Rectangle {
+                x: 4
+                y: 4
+                width: 20
+                height: 20
+                radius: 10
+                color: closeArea.containsMouse ? "#ffffff" : Qt.rgba(1, 1, 1, 0.88)
+                border.color: Qt.rgba(0, 0, 0, 0.12)
+                opacity: card.hovered || closeArea.containsMouse ? 1 : 0
+                scale: card.hovered || closeArea.containsMouse ? 1 : 0.6
+
+                Behavior on opacity { NumberAnimation { duration: 180 } }
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    font.pixelSize: 10
+                    font.bold: true
+                    color: "#3d3846"
+                }
+
+                MouseArea {
+                    id: closeArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: line.letGo(card.name)
+                }
+            }
+        }
+
+        // The clip, over the top edge of the photo.
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 0
+            width: 9
+            height: 26
+            radius: 3.5
+            border.color: Qt.rgba(1, 1, 1, 0.7)
+            border.width: 0.6
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: Qt.rgba(0.70, 0.70, 0.70, 1) }
+                GradientStop { position: 0.35; color: Qt.rgba(0.93, 0.93, 0.93, 1) }
+                GradientStop { position: 0.65; color: Qt.rgba(0.82, 0.82, 0.82, 1) }
+                GradientStop { position: 1; color: Qt.rgba(0.62, 0.62, 0.62, 1) }
+            }
+
+            // The slot the line passes through.
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 8.5
+                width: 5
+                height: 1.4
+                radius: 0.7
+                color: Qt.rgba(0, 0, 0, 0.32)
+            }
+        }
+
+        Rectangle {
+            anchors.horizontalCenter: frame.horizontalCenter
+            y: frame.y + frame.height * frame.scale + 8
+            width: copiedLabel.implicitWidth + 20
+            height: 24
+            radius: 12
+            color: Qt.rgba(1, 1, 1, 0.92)
+            border.color: Qt.rgba(0, 0, 0, 0.10)
+            opacity: line.copiedName === card.name ? 1 : 0
+
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+
+            Text {
+                id: copiedLabel
+                anchors.centerIn: parent
+                text: "✓ Copied"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                color: "#3d3846"
+            }
+        }
+    }
+}

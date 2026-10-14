@@ -41,6 +41,7 @@ binds {
 
     // Clipboard history; the overlay lives in ~/.config/quickshell/clipboard.
     Mod+Shift+V hotkey-overlay-title="Clipboard history" { spawn "/usr/bin/qs" "-c" "clipboard" "ipc" "call" "clipboard" "toggle"; }
+    Mod+Shift+C hotkey-overlay-title="Copied images line" { spawn "/usr/bin/qs" "-c" "clipboard" "ipc" "call" "line" "toggle"; }
 
     // Text snippets; the overlay lives in ~/.config/quickshell/snippets.
     Mod+T hotkey-overlay-title="Snippets" { spawn "/usr/bin/qs" "-c" "snippets" "ipc" "call" "snippets" "toggle"; }
