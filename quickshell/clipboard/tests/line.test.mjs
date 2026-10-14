@@ -1,0 +1,185 @@
+// Unit tests for the clothesline's logic.
+//
+//   node --test ~/.config/quickshell/clipboard/tests/
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+    MAX_ITEMS,
+    isName,
+    MAX_PIXELS,
+    dimensions,
+    parseSaved,
+    frameBounds,
+    PANTS_WIDTH,
+    PANTS_COLORS,
+    random,
+    pantsSlots,
+    occupied,
+    isFree,
+    ropeY,
+    cardX,
+    photoSize,
+    hang,
+    restore,
+    stepSwing,
+    atRest,
+} from "../line.mjs";
+
+const SHA_A = "a".repeat(64);
+const SHA_B = "b".repeat(64);
+
+const names = n => Array.from({ length: n }, (_, i) => i.toString(16).padStart(64, "0") + ".png");
+
+test("only the watcher's file names are line items", () => {
+    assert.equal(isName(SHA_A + ".png"), true);
+    assert.equal(isName(SHA_A + ".jpeg"), true);
+    assert.equal(isName(SHA_A + ".webp"), false);
+    assert.equal(isName(SHA_A + ".svg+xml"), false);
+    assert.equal(isName(".in.Xy12ab"), false);
+    assert.equal(isName("A".repeat(64) + ".png"), false);
+});
+
+test("the rope sags to its lowest in the middle", () => {
+    assert.equal(ropeY(0, 1920), 10);
+    assert.equal(ropeY(960, 1920), 40);
+    assert.equal(ropeY(1920, 1920), 10);
+    assert.equal(ropeY(500, 1000), 10 + 18);
+});
+
+test("cards hang 174 apart, centred", () => {
+    assert.deepEqual([0, 1, 2].map(i => cardX(i, 3, 1920)), [786, 960, 1134]);
+    assert.equal(cardX(0, 1, 1920), 960);
+});
+
+test("a narrow screen brings the cards closer", () => {
+    assert.equal(Math.round(cardX(0, 8, 1000)), 100);
+    assert.equal(Math.round(cardX(7, 8, 1000)), 900);
+});
+
+test("the photo fits the card keeping its proportions", () => {
+    assert.deepEqual(photoSize(1920, 1080), { width: 136, height: 77 });
+    assert.deepEqual(photoSize(1000, 2000), { width: 52, height: 104 });
+    assert.deepEqual(photoSize(0, 0), { width: 136, height: 104 });
+});
+
+test("a new image hangs at the newest end", () => {
+    const { items, dropped } = hang([{ name: SHA_A + ".png", tilt: 1 }], SHA_B + ".png", -2);
+    assert.deepEqual(items, [{ name: SHA_A + ".png", tilt: 1 }, { name: SHA_B + ".png", tilt: -2 }]);
+    assert.deepEqual(dropped, []);
+});
+
+test("an image already on the line hangs once", () => {
+    const line = [{ name: SHA_A + ".png", tilt: 1 }, { name: SHA_B + ".png", tilt: 2 }];
+    assert.deepEqual(hang(line, SHA_A + ".png", 0), { items: line, dropped: [] });
+});
+
+test("a full line lets its oldest fall", () => {
+    const all = names(MAX_ITEMS + 1);
+    const full = all.slice(0, MAX_ITEMS).map(name => ({ name: name, tilt: 0 }));
+    const { items, dropped } = hang(full, all[MAX_ITEMS], 0);
+    assert.deepEqual(items.map(item => item.name), all.slice(1));
+    assert.deepEqual(dropped, [all[0]]);
+});
+
+test("the line comes back from its folder, oldest first", () => {
+    const all = names(MAX_ITEMS + 2);
+    const listing = [".in.Xy12ab", "notes.txt"].concat(all).join("\n") + "\n";
+    const { items, dropped } = restore(listing, () => 0.5);
+    assert.deepEqual(items.map(item => item.name), all.slice(2));
+    assert.equal(items[0].tilt, 0.5);
+    assert.deepEqual(dropped, all.slice(0, 2));
+    assert.deepEqual(restore("", () => 0), { items: [], dropped: [] });
+});
+
+test("a swing from 16° is back at −8.7° half a period later", () => {
+    // θ(t) = 16·e^(−1.3t)·(cos ωt + 1.3/ω·sin ωt), ω = √(46 − 1.3²).
+    const omega = Math.sqrt(46 - 1.3 * 1.3);
+    const half = Math.PI / omega;
+    let state = { angle: 16, velocity: 0 };
+    let t = 0;
+    while (t + 1 / 60 <= half) {
+        state = stepSwing(state, 1 / 60);
+        t += 1 / 60;
+    }
+    state = stepSwing(state, half - t);
+    assert.ok(Math.abs(state.angle - -8.662) < 0.1, `angle ${state.angle}`);
+});
+
+test("a swing comes to rest", () => {
+    let state = { angle: 16, velocity: 0 };
+    let frames = 0;
+    while (!atRest(state) && frames < 60 * 20) {
+        state = stepSwing(state, 1 / 60);
+        frames++;
+    }
+    assert.ok(frames > 60 * 3 && frames < 60 * 8, `rested after ${frames} frames`);
+});
+
+test("file's description gives the image's size, whatever the format", () => {
+    assert.deepEqual(dimensions("PNG image data, 12000 x 12000, 8-bit/color RGBA, non-interlaced"), { width: 12000, height: 12000 });
+    assert.deepEqual(dimensions("GIF image data, version 89a, 320 x 200"), { width: 320, height: 200 });
+    assert.deepEqual(dimensions("PC bitmap, Windows 3.x format, 640 x -480 x 24, image size 921600, resolution 2835 x 2835 px/m"), { width: 640, height: 480 });
+    assert.deepEqual(dimensions("JPEG image data, JFIF standard 1.01, resolution (DPI), density 72x72, segment length 16, baseline, precision 8, 4000x3000, components 3"), { width: 4000, height: 3000 });
+    assert.equal(dimensions("JPEG image data"), null);
+});
+
+test("an image too big for Qt to decode does not fit", () => {
+    assert.equal(MAX_PIXELS, 60000000);
+    assert.deepEqual(parseSaved(SHA_A + ".png\tPNG image data, 12000 x 12000, 8-bit/color RGBA"), { name: SHA_A + ".png", fits: false });
+    assert.deepEqual(parseSaved(SHA_A + ".png\tPNG image data, 4000 x 4000, 8-bit/color RGBA"), { name: SHA_A + ".png", fits: true });
+    assert.deepEqual(parseSaved(SHA_B + ".jpeg\tJPEG image data"), { name: SHA_B + ".jpeg", fits: true });
+    assert.equal(parseSaved(SHA_A + ".webp\tRIFF (little-endian) data, Web/P image"), null);
+    assert.equal(parseSaved(""), null);
+});
+
+test("an upright frame's box is the frame", () => {
+    assert.deepEqual(frameBounds(100, 50, 1, 0), { x: 25, y: 14, width: 100, height: 50 });
+});
+
+test("hover scales the frame's box from its top edge", () => {
+    assert.deepEqual(frameBounds(100, 50, 1.2, 0), { x: 15, y: 14, width: 120, height: 60 });
+});
+
+test("a turned card's box holds every corner of its frame", () => {
+    // Turned 90° about the clip, the frame lies to the left of it.
+    const box = frameBounds(100, 50, 1, 90);
+    assert.deepEqual([box.x, box.y, box.width, box.height].map(Math.round), [75 - 64, -50, 50, 100]);
+});
+
+test("the same seed draws the same numbers", () => {
+    const a = random(42);
+    const b = random(42);
+    const first = [a(), a(), a()];
+    assert.deepEqual([b(), b(), b()], first);
+    assert.ok(first.every(n => n >= 0 && n < 1));
+    assert.notDeepEqual([random(43)(), random(43)()], first.slice(0, 2));
+});
+
+test("underpants hang inside the edges, apart, the same all session", () => {
+    const slots = pantsSlots(1920, 7);
+    assert.ok(slots.length > 0);
+    assert.deepEqual(pantsSlots(1920, 7), slots);
+    for (const slot of slots) {
+        assert.ok(slot.x - PANTS_WIDTH / 2 >= 40 && slot.x + PANTS_WIDTH / 2 <= 1880, `x ${slot.x}`);
+        assert.ok(PANTS_COLORS.includes(slot.color));
+    }
+    const xs = slots.map(slot => slot.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++)
+        assert.ok(xs[i] - xs[i - 1] >= PANTS_WIDTH, `${xs[i - 1]} and ${xs[i]} overlap`);
+});
+
+test("a slot keeps its place and its look on a wider screen", () => {
+    const narrow = pantsSlots(1280, 7).filter(slot => slot.key.startsWith("l"));
+    const wide = pantsSlots(1920, 7).filter(slot => slot.key.startsWith("l"));
+    assert.deepEqual(wide.slice(0, narrow.length), narrow);
+});
+
+test("eight photos on 1920 leave 40 to 258 and 1662 to 1880 free", () => {
+    assert.deepEqual(occupied(1920, 8), { from: 258, to: 1662 });
+    assert.deepEqual(occupied(1920, 0), { from: 790, to: 1130 });
+    assert.equal(isFree({ x: 68 }, 1920, 8), true);
+    assert.equal(isFree({ x: 240 }, 1920, 8), false);
+    assert.equal(isFree({ x: 240 }, 1920, 1), true);
+    assert.equal(isFree({ x: 1852 }, 1920, 8), true);
+});

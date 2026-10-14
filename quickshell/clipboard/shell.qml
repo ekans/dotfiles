@@ -104,6 +104,11 @@ ShellRoot {
         }
     }
 
+    // Copied images, hung on a line under the bar.
+    Clothesline {
+        id: clothesline
+    }
+
     // --- opening ----------------------------------------------------------------
 
     IpcHandler {
@@ -313,6 +318,7 @@ ShellRoot {
         root.wipeArmed = false;
         root.entries = [];
         root.thumbs = {};
+        clothesline.clear();
         Quickshell.execDetached(["sh", "-c", 'cliphist wipe; rm -rf -- "$1"', "sh", root.cacheDir]);
     }
 
