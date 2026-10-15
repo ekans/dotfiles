@@ -173,3 +173,124 @@ export function meterStep(bar, peak, dt) {
 export function meterIdle(bar) {
     return bar.level === 0 && bar.hold === 0;
 }
+
+// The panel's self-test of a direction (VolumePanel.qml), one value held for
+// both: null when idle, `{ kind: "running", input, steps, step, loudest }`
+// while a command runs, or `{ kind: "problem", input, message }` once it
+// could not. `input` says which direction, and `steps` is a table of `{
+// label, command, failure, listen }` the panel runs one after another:
+// `command` is the argv, `failure` what a problem says when it fails, and
+// `listen` that the input's peak counts towards `loudest` during it. A
+// listening step also has `target`, the PipeWire node it records. `step`
+// indexes the table.
+
+// The loudest peak a recording must reach for the microphone to count as
+// heard. PwNodePeakMonitor's peaks are on the cubic scale of the volume
+// sliders, not linear: a recording whose linear peak was 0.131 read 0.508 on
+// the monitor, and 0.131^(1/3) = 0.508. 0.05 there is about -78 dBFS, so only
+// near-digital silence fails: a muted or dead microphone, or the wrong
+// device. A quiet room's noise floor passes, and the playback tells the rest.
+export const MIC_SILENCE = 0.05;
+
+// How long the input test records. `timeout` ends it, and that is what makes
+// its step succeed (see testStepEnded).
+const RECORD_SECONDS = 3;
+
+const OUTPUT_SAMPLES = "/usr/share/sounds/freedesktop/stereo/audio-channel-front-";
+
+function problem(input, message) {
+    return { kind: "problem", input, message };
+}
+
+function running(input, steps) {
+    return { kind: "running", input, steps, step: 0, loudest: 0 };
+}
+
+// The output test of `device`, `{ name, muted, volume }`: the voice samples
+// "front left" then "front right" played on it one after the other, so the
+// ear tells whether each side works, and the bar's meter shows the same.
+// Not run while it is muted: it would play nothing.
+export function outputTest(device) {
+    if (device.muted)
+        return problem(false, "Muted: unmute to hear it");
+    const play = side => ["pw-play", "--target", device.name, `${OUTPUT_SAMPLES}${side}.oga`];
+    return running(false, [
+        { label: "Left", command: play("left"), failure: "Couldn't play the test sound", listen: false },
+        { label: "Right", command: play("right"), failure: "Couldn't play the test sound", listen: false },
+    ]);
+}
+
+// What pw-record is aimed at for an input from inputDevices(). A monitor
+// source is pulse's name for a sink's monitor, `X.monitor`; PipeWire records
+// the sink `X` itself, asking for its monitor with a stream property.
+function recordTarget(device) {
+    return device.monitor ? device.name.replace(/\.monitor$/, "") : device.name;
+}
+
+// The input test of `device` (an inputDevices() entry), recording into
+// `file`: three seconds of the source, then the recording played back on the
+// default sink. pw-record rather than parecord, which under `timeout` wrote
+// 1.1 s of a 3 s recording where pw-record wrote 2.99 s. Not run while the
+// source is muted: it would record silence.
+export function inputTest(device, file) {
+    if (device.muted)
+        return problem(true, "The microphone is muted");
+    const target = recordTarget(device);
+    const monitor = device.monitor ? ["-P", "{ stream.capture.sink = true }"] : [];
+    return running(true, [
+        {
+            label: "Speak now",
+            command: ["timeout", "-s", "INT", String(RECORD_SECONDS), "pw-record", "--target", target]
+                .concat(monitor, [file]),
+            target,
+            failure: "Couldn't record",
+            listen: true,
+        },
+        { label: "Playing back", command: ["pw-play", file], failure: "Couldn't play it back", listen: false },
+    ]);
+}
+
+function currentStep(test) {
+    return test && test.kind === "running" ? test.steps[test.step] : null;
+}
+
+// Whether the input's peaks are being counted: the panel opens the meter on
+// the microphone only then, so it is not held open otherwise. Opening a
+// Bluetooth headset's microphone switches it to its low-quality call profile.
+export function testListening(test) {
+    const step = currentStep(test);
+    return !!step && step.listen;
+}
+
+// The PipeWire node name the listening step records, the one to watch for
+// peaks, or null when the step does not record.
+export function testTarget(test) {
+    const step = currentStep(test);
+    return step && step.listen ? step.target : null;
+}
+
+// `peak`, from PwNodePeakMonitor, counted towards what the recording has
+// reached so far. Anything but a listening step takes no notice.
+export function testHeard(test, peak) {
+    if (!testListening(test) || !(peak > test.loudest))
+        return test;
+    return Object.assign({}, test, { loudest: peak });
+}
+
+// The test after its current command exited with `exitCode`: the next step,
+// null after the last, or a problem. The recording is ended by `timeout`,
+// which exits 124 when it had to, so that is how a listening step succeeds;
+// the others succeed on 0. A recording that stayed under MIC_SILENCE is not
+// played back.
+export function testStepEnded(test, exitCode) {
+    const step = currentStep(test);
+    if (!step)
+        return test;
+    if (exitCode !== (step.listen ? 124 : 0))
+        return problem(test.input, step.failure);
+    if (step.listen && test.loudest < MIC_SILENCE)
+        return problem(test.input, "Heard nothing");
+    if (test.step + 1 >= test.steps.length)
+        return null;
+    return Object.assign({}, test, { step: test.step + 1 });
+}

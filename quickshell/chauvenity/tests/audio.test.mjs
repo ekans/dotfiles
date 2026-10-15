@@ -8,6 +8,7 @@ import {
     nodeKind, volumeTone, percent, stepVolume, streamLabel, unpluggedSinks, sinkLabel,
     inputDevices, paVolume,
     stereoPeaks, meterStep, meterIdle, METER_IDLE, METER_FALL, METER_HOLD,
+    outputTest, inputTest, testListening, testTarget, testHeard, testStepEnded, MIC_SILENCE,
 } from "../audio.mjs";
 
 test("nodeKind tells the audio devices apart", () => {
@@ -241,4 +242,185 @@ test("meterStep comes back to exactly idle in silence", () => {
         bar = meterStep(bar, 0, 0.016);
     assert.ok(meterIdle(bar));
     assert.deepEqual(meterStep(METER_IDLE, 0, 0.016), METER_IDLE);
+});
+
+const SAMPLES = "/usr/share/sounds/freedesktop/stereo/audio-channel-front-";
+const FILE = "/run/user/1000/chauvenity-mic-test.wav";
+const MIC_DEVICE = {
+    name: "alsa_input.pci-0000_c1_00.6.HiFi__Mic2__source",
+    label: "Ryzen Internal Stereo Microphone",
+    muted: false,
+    monitor: false,
+};
+const SPEAKERS = { name: "alsa_output.pci-0000_c1_00.6.HiFi__Speaker__sink", muted: false, volume: 0.4 };
+
+test("outputTest plays front left then front right on the sink", () => {
+    assert.deepEqual(outputTest(SPEAKERS), {
+        kind: "running",
+        input: false,
+        steps: [
+            {
+                label: "Left",
+                command: ["pw-play", "--target", SPEAKERS.name, `${SAMPLES}left.oga`],
+                failure: "Couldn't play the test sound",
+                listen: false,
+            },
+            {
+                label: "Right",
+                command: ["pw-play", "--target", SPEAKERS.name, `${SAMPLES}right.oga`],
+                failure: "Couldn't play the test sound",
+                listen: false,
+            },
+        ],
+        step: 0,
+        loudest: 0,
+    });
+});
+
+test("outputTest does not run on a muted sink", () => {
+    assert.deepEqual(outputTest({ ...SPEAKERS, muted: true }), {
+        kind: "problem",
+        input: false,
+        message: "Muted: unmute to hear it",
+    });
+});
+
+test("inputTest records the source for 3 s, then plays it back", () => {
+    assert.deepEqual(inputTest(MIC_DEVICE, FILE), {
+        kind: "running",
+        input: true,
+        steps: [
+            {
+                label: "Speak now",
+                command: ["timeout", "-s", "INT", "3", "pw-record", "--target", MIC_DEVICE.name, FILE],
+                target: MIC_DEVICE.name,
+                failure: "Couldn't record",
+                listen: true,
+            },
+            {
+                label: "Playing back",
+                command: ["pw-play", FILE],
+                failure: "Couldn't play it back",
+                listen: false,
+            },
+        ],
+        step: 0,
+        loudest: 0,
+    });
+});
+
+test("inputTest records a monitor source from its sink, asking for the monitor", () => {
+    const monitor = {
+        name: "alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink.monitor",
+        label: "Monitor of Ryzen Headphones",
+        muted: false,
+        monitor: true,
+    };
+    assert.deepEqual(inputTest(monitor, FILE).steps[0].command, [
+        "timeout", "-s", "INT", "3", "pw-record",
+        "--target", "alsa_output.pci-0000_c1_00.6.HiFi__Headphones__sink",
+        "-P", "{ stream.capture.sink = true }",
+        FILE,
+    ]);
+});
+
+test("inputTest does not run on a muted microphone", () => {
+    assert.deepEqual(inputTest({ ...MIC_DEVICE, muted: true }, FILE), {
+        kind: "problem",
+        input: true,
+        message: "The microphone is muted",
+    });
+});
+
+test("the output test goes left, right, then ends", () => {
+    let t = outputTest(SPEAKERS);
+    t = testStepEnded(t, 0);
+    assert.equal(t.step, 1);
+    assert.equal(t.steps[t.step].label, "Right");
+    assert.equal(testStepEnded(t, 0), null);
+});
+
+test("the recording ending on timeout's 124 is success, 0 is not", () => {
+    const t = testHeard(inputTest(MIC_DEVICE, FILE), 0.5);
+    assert.equal(testStepEnded(t, 124).step, 1);
+    assert.deepEqual(testStepEnded(t, 0), { kind: "problem", input: true, message: "Couldn't record" });
+    assert.deepEqual(testStepEnded(t, 1), { kind: "problem", input: true, message: "Couldn't record" });
+});
+
+test("a loud recording goes on to the playback, which ends the test", () => {
+    const heard = testHeard(inputTest(MIC_DEVICE, FILE), 0.508);
+    const playing = testStepEnded(heard, 124);
+    assert.deepEqual(playing, { ...heard, step: 1 });
+    assert.equal(testStepEnded(playing, 0), null);
+});
+
+test("a recording under the silence threshold skips the playback", () => {
+    const quiet = testHeard(inputTest(MIC_DEVICE, FILE), MIC_SILENCE - 0.01);
+    assert.deepEqual(testStepEnded(quiet, 124), { kind: "problem", input: true, message: "Heard nothing" });
+    assert.deepEqual(testStepEnded(inputTest(MIC_DEVICE, FILE), 124), {
+        kind: "problem",
+        input: true,
+        message: "Heard nothing",
+    });
+});
+
+test("a recording at the silence threshold counts as heard", () => {
+    const at = testHeard(inputTest(MIC_DEVICE, FILE), MIC_SILENCE);
+    assert.equal(testStepEnded(at, 124).step, 1);
+});
+
+test("a failing command becomes a problem that says which step it was", () => {
+    const output = outputTest(SPEAKERS);
+    const right = testStepEnded(output, 0);
+    for (const test of [output, right]) {
+        assert.deepEqual(testStepEnded(test, 1), {
+            kind: "problem",
+            input: false,
+            message: "Couldn't play the test sound",
+        });
+    }
+    const playing = testStepEnded(testHeard(inputTest(MIC_DEVICE, FILE), 0.5), 124);
+    assert.deepEqual(testStepEnded(playing, 1), { kind: "problem", input: true, message: "Couldn't play it back" });
+});
+
+test("testHeard keeps the loudest peak while the step listens", () => {
+    let t = inputTest(MIC_DEVICE, FILE);
+    t = testHeard(t, 0.2);
+    t = testHeard(t, 0.1);
+    assert.equal(t.loudest, 0.2);
+    t = testHeard(t, 0.7);
+    assert.equal(t.loudest, 0.7);
+});
+
+test("testHeard ignores a step that does not listen, and anything but a running test", () => {
+    const output = outputTest(SPEAKERS);
+    assert.equal(testHeard(output, 0.9), output);
+    const playing = testStepEnded(testHeard(inputTest(MIC_DEVICE, FILE), 0.5), 124);
+    assert.equal(testHeard(playing, 0.9), playing);
+    assert.equal(testHeard(null, 0.9), null);
+    const muted = inputTest({ ...MIC_DEVICE, muted: true }, FILE);
+    assert.equal(testHeard(muted, 0.9), muted);
+});
+
+test("testListening and testTarget follow the recording step only", () => {
+    const t = inputTest(MIC_DEVICE, FILE);
+    assert.equal(testListening(t), true);
+    assert.equal(testTarget(t), MIC_DEVICE.name);
+    const playing = testStepEnded(testHeard(t, 0.5), 124);
+    assert.equal(testListening(playing), false);
+    assert.equal(testTarget(playing), null);
+    assert.equal(testListening(outputTest(SPEAKERS)), false);
+    assert.equal(testListening(null), false);
+    assert.equal(testTarget(null), null);
+});
+
+test("testTarget names the sink of a monitor, whose node that is", () => {
+    const monitor = { name: "some_sink.monitor", muted: false, monitor: true };
+    assert.equal(testTarget(inputTest(monitor, FILE)), "some_sink");
+});
+
+test("testStepEnded leaves an idle or failed test as it is", () => {
+    assert.equal(testStepEnded(null, 0), null);
+    const failed = outputTest({ ...SPEAKERS, muted: true });
+    assert.equal(testStepEnded(failed, 0), failed);
 });
