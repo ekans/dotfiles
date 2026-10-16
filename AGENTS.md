@@ -20,6 +20,16 @@ tokens and work data out of it.
 - niri config: `niri validate -c niri/config.kdl`.
 - Quickshell reloads on a `.qml` edit, not on a `.mjs` edit. After changing a
   `.mjs` file, restart the instance.
+- The walkpad helper's tests:
+  `/usr/bin/python3 -B -m unittest discover -s quickshell/chauvenity/walkpad/tests -t quickshell/chauvenity/walkpad`.
+  Use `/usr/bin/python3`, not the `python3` on PATH, which has no GObject
+  bindings. Always pass `-B`: the directory is the live bar config and must
+  not fill with `__pycache__`.
+- The helper (`walkpad/`) runs as the `walkpad` user service, not as a child
+  of the bar. It reloads itself a second after its last `*.py` file changes, so
+  nothing needs a restart. The open walk resumes from the database. A `.mjs`
+  edit does not reload the bar, so the two can differ until the bar restarts.
+  The panel then says the service is from another version.
 
 The user works in a live niri session on this machine. Never start niri, qs or
 any GUI app on their `WAYLAND_DISPLAY`, because the window takes their focus.
@@ -42,6 +52,22 @@ browser, and a clipboard instance that finds `cliphist` on its PATH writes to
 the real history (`~/.cache/cliphist/db`). Before you spawn
 `quickshell/clipboard`, put a stub `xdg-open` first on its PATH and set
 `CLIPHIST_DB_PATH` to a scratch file.
+
+The walkpad panel needs its helper on the sandbox's own
+`$XDG_RUNTIME_DIR/walkpad.sock`. Start a helper on a replayed pad and a
+scratch database before the bar. It refuses the real pad and the real
+database there. `niri-sandbox spawn` drops your exported environment, so pass
+the variables with `env`:
+
+```bash
+scratch=$(mktemp -d)
+niri-sandbox spawn env WALKPAD_PAD="replay:$PWD/quickshell/chauvenity/walkpad/tests/fixtures/sandbox.replay" \
+  WALKPAD_DB="$scratch/walkpad.db" WALKPAD_IMPORT= \
+  /usr/bin/python3 -B "$PWD/quickshell/chauvenity/walkpad" serve
+niri-sandbox spawn qs -p "$PWD/quickshell/chauvenity"
+niri-sandbox run qs -p "$PWD/quickshell/chauvenity" ipc call bar toggle walkpad
+niri-sandbox shot
+```
 
 `run` also takes `niri msg`, `wtype` and `wl-copy`. `qs log -p DIR` (through
 `run`) shows a sandboxed instance's log. If `niri-sandbox` is not on PATH, use
