@@ -15,8 +15,10 @@ on
 belt 2.5 300
 belt 0 700
 
-# Today: the iPhone holds the pad, then lets go; a walk with a drop mid-walk.
-at -30m
+# Just now: the iPhone holds the pad, then lets go; a walk with a drop
+# mid-walk. It ends 6 s before the helper started, so a helper restarted
+# on the same database resumes it rather than finishing it as idle.
+at -210s
 held
 wait 20
 on

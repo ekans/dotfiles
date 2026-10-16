@@ -1,0 +1,7 @@
+# The pad walk.replay leaves running, as a restarted helper finds it: on,
+# with its counters where they were. tests/test_server.py EndToEnd.
+pace 0
+pad MAXFREE-FAKE
+resume 180 0.15
+belt 3.5 10
+end

@@ -7,6 +7,7 @@ import hashlib
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from link import KnownPad
@@ -122,7 +123,7 @@ class Schema(Scratch):
         store, _ = self.open()
         store.close()
         self.stores.remove(store)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("PRAGMA user_version = 2")
         with self.assertRaises(StoreTooNew):
             self.open()
@@ -144,9 +145,8 @@ class ImportFromTheBbPlugin(Scratch):
         super().setUp()
         self.plugin = self.root / "bb" / "data.db"
         self.plugin.parent.mkdir()
-        with sqlite3.connect(self.plugin) as db:
+        with closing(sqlite3.connect(self.plugin)) as db, db:
             db.executescript((FIXTURES / "bb-plugin.sql").read_text())
-        db.close()
 
     def test_imports_sessions_as_finished_walks_with_times_in_seconds(self):
         store, problems = self.open(self.plugin)

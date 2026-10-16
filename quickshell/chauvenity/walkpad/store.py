@@ -207,6 +207,10 @@ class Store:
         """Every walk, newest first."""
         return [_walk(row) for row in self._db.execute(f"SELECT {_WALK_COLUMNS} FROM walks {_NEWEST_FIRST}")]
 
+    def walk(self, walk_id: int) -> Walk | None:
+        row = self._db.execute(f"SELECT {_WALK_COLUMNS} FROM walks WHERE id = ?", (walk_id,)).fetchone()
+        return _walk(row) if row else None
+
     def unfinished(self) -> list[Walk]:
         """Unfinished walks, newest first. More than one only in a database
         an older helper wrote; the controller finishes all but the first."""

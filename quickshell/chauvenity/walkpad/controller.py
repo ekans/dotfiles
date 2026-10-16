@@ -167,8 +167,13 @@ class WalkController:
         self._save(replace(self.settings, pad=None))
         self.source.forget()
 
-    def samples(self, walk_id: int) -> list[SpeedPoint]:
-        return self.store.samples(walk_id)
+    def walks(self) -> list[Walk]:
+        """Every walk, newest first."""
+        return self.store.walks()
+
+    def samples(self, walk_id: int) -> list[SpeedPoint] | None:
+        """A walk's speed trace, or None when there is no such walk."""
+        return self.store.samples(walk_id) if self.store.walk(walk_id) else None
 
     def _save(self, settings: Settings) -> None:
         self.settings = settings

@@ -9,6 +9,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from controller import IDLE_LIMIT_S, WalkController
@@ -311,13 +312,12 @@ class AfterARestart(Fixture):
 
     def test_closes_walks_cut_short_and_resumes_the_latest_one(self):
         self.store.close()
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("DROP INDEX one_open_walk")
             for started in (at(0), at(1000)):
                 db.execute("INSERT INTO walks (started_at, ended_at, elapsed_s, distance_km, calories, max_speed,"
                            " offset_elapsed_s, offset_distance_km, offset_calories, finished)"
                            " VALUES (?, ?, 60, 0.05, 3, 3.0, 0, 0, 0, 0)", (started, started + 60))
-        db.close()
         self.store, _ = Store.open(self.path, import_from=None)
         self.start()
         self.assertEqual(self.walks(), [(at(1000), PadCounters(60, 0.05, 3), False),
