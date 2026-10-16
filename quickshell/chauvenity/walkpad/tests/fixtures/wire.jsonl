@@ -1,0 +1,11 @@
+{"type":"status","protocol":1,"link":{"state":"waiting","pad":"MAXFREE-FAKE","retryAt":1800000012000,"error":"Input/output error"},"connect":true,"pad":"MAXFREE-FAKE","speedKmh":null,"open":null,"problems":[]}
+{"type":"walks","walks":[{"id":1,"startedAt":1799913600000,"endedAt":1799914200000,"elapsedS":600,"distanceKm":0.5,"calories":20,"maxSpeedKmh":3.0,"open":false}]}
+{"type":"trace","walk":null,"points":[]}
+{"type":"status","protocol":1,"link":{"state":"connected","pad":"MAXFREE-FAKE"},"connect":true,"pad":"MAXFREE-FAKE","speedKmh":0.0,"open":null,"problems":[]}
+{"type":"status","protocol":1,"link":{"state":"connected","pad":"MAXFREE-FAKE"},"connect":true,"pad":"MAXFREE-FAKE","speedKmh":3.0,"open":{"id":2,"startedAt":1800000020000,"endedAt":1800000020000,"elapsedS":1,"distanceKm":0.0,"calories":0,"maxSpeedKmh":3.0},"problems":[]}
+{"type":"walks","walks":[{"id":2,"startedAt":1800000020000,"endedAt":1800000020000,"elapsedS":1,"distanceKm":0.0,"calories":0,"maxSpeedKmh":3.0,"open":true},{"id":1,"startedAt":1799913600000,"endedAt":1799914200000,"elapsedS":600,"distanceKm":0.5,"calories":20,"maxSpeedKmh":3.0,"open":false}]}
+{"type":"trace","walk":2,"points":[[1800000020000,3.0]]}
+{"type":"status","protocol":1,"link":{"state":"connected","pad":"MAXFREE-FAKE"},"connect":true,"pad":"MAXFREE-FAKE","speedKmh":3.0,"open":{"id":2,"startedAt":1800000020000,"endedAt":1800000021000,"elapsedS":2,"distanceKm":0.0,"calories":0,"maxSpeedKmh":3.0},"problems":[]}
+{"type":"point","walk":2,"point":[1800000021000,3.0]}
+{"type":"samples","walk":1,"points":[[1799913600000,3.0],[1799913601000,3.0],[1799914200000,0.0]]}
+{"type":"done","cmd":"delete 9","error":"no walk 9"}
