@@ -497,6 +497,40 @@ ShellRoot {
         }
     }
 
+    // --- walkpad ------------------------------------------------------------
+    // The walking pad. The walkpad is the helper (walkpad/, the systemd user
+    // service walkpad.service): it records with or without the bar, and this
+    // is the bar's one line to it. Every bar's Walkpad item reads it. From
+    // the keyboard:
+    //
+    //     qs -c chauvenity ipc call bar toggle walkpad    # Super+Space w w
+    //     qs -c chauvenity ipc call walkpad finish        # Super+Space w f
+    //     qs -c chauvenity ipc call walkpad connect       # Super+Space w c
+    //
+    //     systemctl --user status walkpad
+
+    WalkpadService {
+        id: walkpad
+    }
+
+    IpcHandler {
+        target: "walkpad"
+
+        // Answers "finished", "no walk" when none is open, or why the helper
+        // could not be asked.
+        function finish(): string {
+            if (walkpad.model.service === "up" && walkpad.model.open === null)
+                return "no walk";
+            return walkpad.finish() || "finished";
+        }
+        // Flips "Connect to the pad". Answers with the new state, "on" or
+        // "off", or why the helper could not be asked.
+        function connect(): string {
+            const on = !walkpad.model.connect;
+            return walkpad.toggleConnect() || (on ? "on" : "off");
+        }
+    }
+
     // --- the wallpaper ------------------------------------------------------
     Wallpaper {}
 
@@ -756,8 +790,8 @@ ShellRoot {
                 }
             }
 
-            // Right: Claude Code usage, network, volume, battery, caffeine,
-            // notifications, clock.
+            // Right: Claude Code usage, walkpad, network, volume, battery,
+            // caffeine, notifications, clock.
             Row {
                 id: rightItems
                 anchors.right: parent.right
@@ -771,6 +805,15 @@ ShellRoot {
                     panels: barPanels
                     compact: bar.compact
                     summary: root.claudeUsage
+                    now: clock.date
+                }
+
+                Walkpad {
+                    anchors.verticalCenter: parent.verticalCenter
+                    compact: bar.compact
+                    theme: root
+                    panels: barPanels
+                    service: walkpad
                     now: clock.date
                 }
 
