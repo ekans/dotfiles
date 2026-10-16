@@ -1,5 +1,18 @@
 include "/etc/niri/config.kdl"
 
+// Caps Lock is a second Enter. The layout is restated from `localectl`
+// because setting any xkb field stops niri reading it from there.
+input {
+    keyboard {
+        xkb {
+            layout "fr"
+            variant "afnor"
+            model "microsoftpro"
+            options "terminate:ctrl_alt_bksp,caps:return"
+        }
+    }
+}
+
 // I never stack windows in a column, so vertical keys switch workspaces.
 binds {
     Mod+Up        { focus-workspace-up; }
