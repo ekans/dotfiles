@@ -4,8 +4,8 @@ pragma ComponentBehavior: Bound
 // picker for the output, the level of each stream playing into it, and below
 // them the same again for the microphone: the default source's level and a
 // picker for the input.
-// From the keyboard, the arrows step the level, M mutes, and 1–9 pick the
-// device listed under that number; with Shift they act on the microphone.
+// From the keyboard, the arrows step the level, M mutes, T tests, and 1–9 pick
+// the device listed under that number; with Shift they act on the microphone.
 //
 // The output reads and drives Quickshell's PipeWire nodes, as the bar does.
 // The input reads and drives pactl instead: its nodes resolve a monitor
@@ -51,6 +51,7 @@ Item {
         heading: "Output",
         input: false,
         current: panel.sink ? {
+            name: panel.sink.name,
             label: Audio.sinkLabel(panel.sink.description, panel.sink.name),
             kind: Audio.nodeKind(panel.sink.name, panel.sink.properties),
             volume: panel.sink.audio ? panel.sink.audio.volume : 0,
@@ -69,7 +70,8 @@ Item {
             if (panel.sink && panel.sink.audio)
                 panel.sink.audio.muted = !panel.sink.audio.muted;
         },
-        pick: i => { Pipewire.preferredDefaultAudioSink = panel.shownSinks[i]; }
+        pick: i => { Pipewire.preferredDefaultAudioSink = panel.shownSinks[i]; },
+        runTest: () => panel.toggleTest(false)
     })
     readonly property var input: ({
         heading: "Input",
@@ -82,7 +84,8 @@ Item {
         })),
         setVolume: v => panel.setInputVolume(v),
         toggleMute: () => panel.toggleInputMute(),
-        pick: i => panel.pickInput(i)
+        pick: i => panel.pickInput(i),
+        runTest: () => panel.toggleTest(true)
     })
 
     implicitWidth: 280
@@ -90,8 +93,9 @@ Item {
 
     // A key pressed while the panel is open, from Volume.qml. Up and Right
     // step the default sink as a wheel notch does, Down and Left back; M
-    // mutes; a digit picks that output. With Shift the same keys act on the
-    // default source and the inputs. Answers whether it was one of those.
+    // mutes; T tests the output; a digit picks that output. With Shift the
+    // same keys act on the default source and the inputs. Answers whether it
+    // was one of those.
     function keyPressed(event) {
         const direction = event.modifiers & Qt.ShiftModifier ? panel.input : panel.output;
         const current = direction.current;
@@ -112,6 +116,9 @@ Item {
         } else if (event.key === Qt.Key_M) {
             if (current)
                 direction.toggleMute();
+        } else if (event.key === Qt.Key_T) {
+            if (current)
+                direction.runTest();
         } else {
             return false;
         }
@@ -144,6 +151,8 @@ Item {
     onActiveChanged: {
         panel.refresh();
         panel.refreshInput();
+        if (!panel.active)
+            panel.setTest(null);
     }
     onSinksChanged: panel.refresh()
 
@@ -278,6 +287,82 @@ Item {
         }
     }
 
+    // The self-test of a direction, audio.mjs's one value for both: what the
+    // control on the picker's heading shows, and what the keys and the
+    // pointer start or cancel. One test runs at a time. Starting the one that
+    // runs cancels it, starting the other replaces it, and closing the panel
+    // cancels it. A problem stays shown until the next test or until the
+    // panel closes.
+    property var test: null
+    // Where the input test records. It holds the user's voice, so it is
+    // removed whenever the test ends, however it ends.
+    readonly property string testFile: Quickshell.env("XDG_RUNTIME_DIR") + "/chauvenity-mic-test.wav"
+    // Whether the command running was stopped for a test that is no longer
+    // the current one, so its exit says nothing about the current test.
+    property bool testStopped: false
+
+    // The test as `input`'s control shows it: running or a problem, or null
+    // when the other direction has the test or none runs.
+    function testOf(input) {
+        return panel.test && panel.test.input === input ? panel.test : null;
+    }
+
+    function toggleTest(input) {
+        const device = input ? panel.input.current : panel.output.current;
+        if (!device)
+            return;
+        const running = panel.test && panel.test.kind === "running" && panel.test.input === input;
+        panel.setTest(running ? null : input ? Audio.inputTest(device, panel.testFile) : Audio.outputTest(device));
+    }
+
+    // Makes `next` the test. Its steps go on from where a step ends, so a
+    // recording stays only while the test it belongs to goes on.
+    function setTest(next) {
+        const previous = panel.test;
+        const goesOn = !!next && next.kind === "running" && !!previous && next.steps === previous.steps;
+        if (previous && previous.kind === "running" && previous.input && !goesOn)
+            Quickshell.execDetached(["rm", "-f", panel.testFile]);
+        panel.test = next;
+        panel.runStep();
+    }
+
+    // A command runs at a time. One that is running while another test is
+    // wanted is stopped first, and its exit starts the wanted one.
+    function runStep() {
+        if (testRun.running) {
+            panel.testStopped = true;
+            testRun.running = false;
+        } else if (panel.test && panel.test.kind === "running") {
+            testRun.command = panel.test.steps[panel.test.step].command;
+            testRun.running = true;
+        }
+    }
+
+    Process {
+        id: testRun
+        onExited: exitCode => {
+            if (panel.testStopped) {
+                panel.testStopped = false;
+                panel.runStep();
+            } else {
+                panel.setTest(Audio.testStepEnded(panel.test, exitCode));
+            }
+        }
+    }
+
+    // The input's peaks while the test records: the meter on the heading, and
+    // the loudest one the test goes by.
+    PwNodePeakMonitor {
+        id: testMonitor
+        node: {
+            const target = Audio.testTarget(panel.test);
+            return target ? Pipewire.nodes.values.find(n => n.name === target) : null;
+        }
+        enabled: Audio.testListening(panel.test)
+        onPeaksChanged: panel.test = Audio.testHeard(panel.test, testMonitor.peak)
+    }
+    readonly property real testPeak: testMonitor.enabled ? Math.min(1, testMonitor.peak) : 0
+
     // A level, 0–100 %, set by clicking or dragging along it: `moved` says
     // what to. Past 100 % the fill is full and in the warn colour.
     component LevelSlider: Item {
@@ -409,9 +494,68 @@ Item {
             }
         }
 
-        Heading {
-            text: block.direction.heading
-            color: block.theme.dimColor
+        Item {
+            width: parent.width
+            implicitHeight: heading.implicitHeight
+
+            Heading {
+                id: heading
+                text: block.direction.heading
+                color: block.theme.dimColor
+            }
+
+            // The direction's test: idle, "Test"; running, its step, and
+            // while it records a meter of the microphone; and after a
+            // problem, what it was. A click starts it, cancels it or tries
+            // again.
+            Row {
+                id: testControl
+                readonly property var testing: panel.testOf(block.direction.input)
+
+                visible: !!block.current
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 2
+                spacing: 6
+
+                Rectangle {
+                    visible: Audio.testListening(testControl.testing)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 40
+                    height: 4
+                    radius: 2
+                    color: block.theme.trackColor
+
+                    Rectangle {
+                        width: parent.width * panel.testPeak
+                        height: parent.height
+                        radius: 2
+                        color: block.theme.accentColor
+                    }
+                }
+                Text {
+                    // What the heading leaves, less the meter.
+                    width: Math.min(implicitWidth, block.width - heading.implicitWidth - 12
+                                    - (Audio.testListening(testControl.testing) ? 46 : 0))
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
+                    text: !testControl.testing ? "Test"
+                        : testControl.testing.kind === "running" ? testControl.testing.steps[testControl.testing.step].label
+                        : testControl.testing.message
+                    color: !testControl.testing ? (testMouse.containsMouse ? block.theme.fgColor : block.theme.dimColor)
+                        : testControl.testing.kind === "running" ? block.theme.accentColor
+                        : block.theme.warnColor
+                    font.pixelSize: 11
+                }
+            }
+            MouseArea {
+                id: testMouse
+                visible: testControl.visible
+                anchors.fill: testControl
+                anchors.margins: -3
+                hoverEnabled: true
+                onClicked: block.direction.runTest()
+            }
         }
 
         Repeater {
@@ -571,7 +715,7 @@ Item {
 
         Text {
             topPadding: 10
-            text: "↑↓ volume · M mute · 1–9 output · Esc close\nShift: the same for the microphone"
+            text: "↑↓ volume · M mute · T test · 1–9 output · Esc close\nShift: the same for the microphone"
             color: panel.theme.dimColor
             font.pixelSize: 11
         }
