@@ -37,6 +37,11 @@ export const MENU = [
         { key: "x", name: "put away", run: qs("chauvenity", "notifications", "close") },
     ] },
     { key: "c", name: "caffeine", run: qs("chauvenity", "caffeine", "toggle") },
+    { key: "w", name: "walkpad", children: [
+        { key: "w", name: "panel", run: qs("chauvenity", "bar", "toggle", "walkpad") },
+        { key: "f", name: "finish the walk", run: qs("chauvenity", "walkpad", "finish") },
+        { key: "c", name: "connect on/off", run: qs("chauvenity", "walkpad", "connect") },
+    ] },
     { key: "o", name: "bar panel", bar: qs("chauvenity", "bar", "toggle", "{item}") },
     { key: "h", name: "bar hints", run: qs("chauvenity", "bar", "hints") },
     { key: "?", name: "keyboard shortcuts", run: qs("chauvenity", "keys", "toggle") },

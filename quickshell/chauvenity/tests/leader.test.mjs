@@ -146,3 +146,15 @@ test("the leader menu itself checks out, and reaches each plugin", () => {
     for (const config of ["bb-new", "bb-go", "clipboard", "snippets", "chauvenity", "pick-to-bb"])
         assert.ok(runs.includes(config), config);
 });
+
+test("the walkpad page opens the panel, finishes the walk and flips the connection", () => {
+    const page = pageAt(MENU, ["w"], []);
+    assert.equal(page.entry.name, "walkpad");
+    assert.deepEqual(page.entries.map(e => [e.key, command(e.run, {}).slice(-2).join(" ")]), [
+        ["w", "toggle walkpad"],
+        ["f", "walkpad finish"],
+        ["c", "walkpad connect"],
+    ]);
+    // The same targets shell.qml's IpcHandlers answer to.
+    assert.ok(page.entries.every(e => e.run.slice(0, 2).join(" ") === "qs -c" && e.run[2] === "chauvenity"));
+});
