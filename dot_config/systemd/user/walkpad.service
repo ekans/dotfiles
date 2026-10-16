@@ -1,0 +1,27 @@
+# The walking pad recorder behind the chauvenity bar's walkpad item
+# (~/.config/quickshell/chauvenity/walkpad). It owns the BLE link to the pad,
+# the walks and their database ($XDG_DATA_HOME/walkpad/), and serves them on
+# $XDG_RUNTIME_DIR/walkpad.sock. Its own unit, not a child of the bar, so a
+# walk outlives the bar reloading on every .qml save.
+#
+# It exits by itself once one of its .py files changes, and is back a second
+# later on the new code, still holding the pad, so a walk in progress carries
+# on. Stopping it hands the pad back to the iPhone. Exit status 2 is a
+# configuration it refuses, which starting again would not fix.
+#
+# chezmoi never runs systemctl: niri pulls it in at the next login, or now
+# with `systemctl --user daemon-reload && systemctl --user start walkpad`.
+[Unit]
+Description=Walking pad recorder (niri session)
+# Same lifetime as the chauvenity-* units: see
+# /usr/lib/systemd/user/niri.service.d/10-chauvenity-session.conf
+BindsTo=niri.service
+After=niri.service graphical-session.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 -B %h/.config/quickshell/chauvenity/walkpad serve
+Restart=always
+RestartSec=1
+RestartPreventExitStatus=2
+Slice=session.slice
