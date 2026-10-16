@@ -38,10 +38,10 @@ binds {
 
     // One key to every plugin, then a key at a time, the way Spacemacs does
     // it: b bb, v clipboard, s snippets, t translate, n notifications,
-    // c caffeine, o a bar panel, h the bar's hints, ? the shortcuts. Typed
-    // without a pause, nothing shows; after one, a strip with the next keys.
-    // Lives in ~/.config/quickshell/chauvenity (Leader.qml, the keys in
-    // leader-menu.mjs).
+    // c caffeine, w the walkpad, o a bar panel, h the bar's hints, ? the
+    // shortcuts. Typed without a pause, nothing shows; after one, a strip
+    // with the next keys. Lives in ~/.config/quickshell/chauvenity
+    // (Leader.qml, the keys in leader-menu.mjs).
     Mod+Space hotkey-overlay-title="Leader menu" { spawn "/usr/bin/qs" "-c" "chauvenity" "ipc" "call" "leader" "toggle"; }
 }
 
