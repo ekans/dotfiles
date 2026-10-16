@@ -36,6 +36,9 @@ NAME_PREFIX = "MAXFREE"
 
 #: How long an LE scan for an unknown pad lasts.
 SCAN_S = 10
+#: How long to wait after a scan that found nothing. With the pad off, a
+#: scan after every short backoff would disturb the user's headphones.
+SCAN_PAUSE_S = 60.0
 #: How often to look again while Bluetooth is off or missing.
 UNAVAILABLE_POLL_S = 5.0
 #: D-Bus call timeout for Connect, which BlueZ answers within about 20 s.
@@ -111,6 +114,10 @@ def find_char(objects: dict, device_path: str, uuid: str) -> str | None:
 
 class BluezError(Exception):
     """A failure on the way to the pad, with the words for the panel."""
+
+
+class NotFound(BluezError):
+    """A scan that found no pad."""
 
 
 class BluezSource:
@@ -211,6 +218,7 @@ class BluezSource:
         while True:
             self._wake.clear()
             self._leave.clear()
+            pause = backoff_s(0)
             if not self._enabled:
                 self._report(Off())
                 await self._wake.wait()
@@ -228,7 +236,7 @@ class BluezSource:
                     continue
                 device = match_device(objects, self._known) or await self._scan(objects)
                 if device is None:
-                    raise BluezError("No walking pad found; is it on, and free of the iPhone app?")
+                    raise NotFound("No walking pad found; is it on, and free of the iPhone app?")
                 if device.pad != self._known:
                     self._known = device.pad
                     self._events.pad_found(device.pad)
@@ -239,10 +247,10 @@ class BluezSource:
                     self._report(Waiting(self._known.name, self.now() + backoff_s(0)))
             except BluezError as error:
                 failures, refused = failures + 1, str(error)
-                retry_at = self.now() + backoff_s(failures)
-                self._report(Waiting(self._known.name, retry_at, refused) if self._known else Searching())
+                pause = SCAN_PAUSE_S if isinstance(error, NotFound) else backoff_s(failures)
+                self._report(Waiting(self._known.name, self.now() + pause, refused) if self._known else Searching())
             if self._enabled and not self._wake.is_set():
-                await self._rest(backoff_s(failures))
+                await self._rest(pause)
 
     async def _scan(self, objects: dict) -> Device | None:
         """A short LE discovery, for a pad BlueZ does not know yet."""

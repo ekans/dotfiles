@@ -119,6 +119,37 @@ class Link(unittest.TestCase):
         with mock.patch("bluez.backoff_s", lambda failures: 0.05):
             return asyncio.run(asyncio.wait_for(run(), 10))
 
+    def run_timed(self, bluez, script, known=PAD):
+        """As run_link, with BlueZ's own waits and a clock the test reads: a
+        scan takes two virtual seconds, and a wait of a minute or more ends
+        only when the source is woken."""
+        rests = []
+        clock = [1000.0]
+
+        async def run():
+            events = Events()
+            source = BluezSource(self.logged.append, bus=bluez)
+            source.now = lambda: clock[0]
+
+            async def rest(seconds):
+                rests.append(seconds)
+                try:
+                    await asyncio.wait_for(source._wake.wait(), None if seconds >= 60 else 0.01)
+                except TimeoutError:
+                    clock[0] += seconds
+
+            source._rest = rest
+            source.start(events, known, True)
+            try:
+                await script(source, events, rests, clock)
+            finally:
+                await source.close()
+            return events
+
+        self.logged = []
+        with mock.patch("bluez.SCAN_S", 2):
+            return asyncio.run(asyncio.wait_for(run(), 10))
+
     @staticmethod
     async def until(test):
         while not test():
@@ -241,6 +272,44 @@ class Link(unittest.TestCase):
         self.assertEqual(events.found, [PAD])
         self.assertEqual(events.links, [Searching(), Waiting(PAD.name), Connected(PAD.name)])
         self.assertEqual(bluez.methods()[:4], ["SetDiscoveryFilter", "StartDiscovery", "StopDiscovery", "Connect"])
+
+    def test_a_scan_that_finds_nothing_is_followed_by_a_pause_of_a_minute(self):
+        bluez = FakeBluez(pad=False)
+
+        async def script(source, events, rests, clock):
+            await self.until(lambda: bluez.methods().count("StopDiscovery") == 1)
+            await self.until(lambda: rests[-1] == 60.0)
+            await asyncio.sleep(0.1)
+            self.assertEqual(bluez.methods().count("StartDiscovery"), 1)
+
+        events = self.run_timed(bluez, script)
+        error = "No walking pad found; is it on, and free of the iPhone app?"
+        self.assertEqual(events.links, [Searching(), Waiting(PAD.name, 1002.0 + 60.0, error)])
+
+    def test_waking_during_the_pause_scans_at_once(self):
+        bluez = FakeBluez(pad=False)
+
+        async def script(source, events, rests, clock):
+            await self.until(lambda: rests and rests[-1] == 60.0)
+            self.assertEqual(clock[0], 1002.0)
+            source.set_enabled(True)
+            await self.until(lambda: bluez.methods().count("StartDiscovery") == 2)
+            # The minute never passed.
+            self.assertEqual(clock[0], 1002.0)
+
+        self.run_timed(bluez, script)
+
+    def test_a_connect_bluez_refuses_on_a_known_pad_is_tried_again_after_three_seconds(self):
+        bluez = FakeBluez()
+        bluez.fail["Connect"] = "Input/output error"
+
+        async def script(source, events, rests, clock):
+            await self.until(lambda: bluez.methods().count("Connect") == 2)
+            self.assertEqual(rests[:2], [3.0, 6.0])
+
+        events = self.run_timed(bluez, script)
+        self.assertEqual(events.links[:2], [Waiting(PAD.name), Waiting(PAD.name, 1003.0, "Input/output error")])
+        self.assertNotIn("StartDiscovery", bluez.methods())
 
     def test_forget_lets_go_and_looks_for_a_pad_again(self):
         bluez = FakeBluez()
