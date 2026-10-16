@@ -1,0 +1,26 @@
+# The pad a reviewer sees in niri-sandbox: some history for Walks and Days,
+# then a live walk in real time. Docs: replay.py.
+pace 0
+pad MAXFREE-FAKE
+at -9d
+on
+belt 3.0 1500
+off
+at -4d
+on
+belt 2.8 900
+belt 0 60
+belt 3.2 600
+off
+at -1d
+on
+belt 3.0 2400
+off
+at 0
+pace 1
+on
+belt 2.0 20
+belt 3.0 600
+belt 0 30
+belt 3.5 600
+end

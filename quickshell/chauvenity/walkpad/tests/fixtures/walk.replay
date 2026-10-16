@@ -1,0 +1,28 @@
+# The end-to-end test's pad: tests/test_server.py EndToEnd. Pace 0, so it
+# runs at once on its virtual clock and its outcome is exact.
+pace 0
+pad MAXFREE-FAKE
+
+# Two days ago: a walk that ends when the pad is switched off with the belt
+# stopped, then one that ends by the 10-minute rule while the pad idles.
+at -2d
+on
+belt 3.0 600
+belt 0 30
+off
+wait 60
+on
+belt 2.5 300
+belt 0 700
+
+# Today: the iPhone holds the pad, then lets go; a walk with a drop mid-walk.
+at -30m
+held
+wait 20
+on
+belt 3.0 120
+drop
+wait 4
+back
+belt 3.5 60
+end

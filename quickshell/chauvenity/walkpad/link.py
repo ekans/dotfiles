@@ -82,9 +82,11 @@ class PadSource(Protocol):
     def forget(self) -> None:
         """Drop the remembered pad, release it, and search again if enabled."""
 
-    async def close(self) -> None:
-        """Release the pad for good, reporting nothing: the helper stopping is
-        not the link dropping, so it must not finish a walk."""
+    async def close(self, release: bool = True) -> None:
+        """Stops reaching the pad, reporting nothing: the helper stopping is
+        not the link dropping, so it must not finish a walk. `release` hands
+        the pad back (StopNotify, Disconnect); without it the link stays up
+        for the next helper, which is what an exit to reload wants."""
 
     def now(self) -> float:
         """The clock events are stamped with; the controller's idle check
