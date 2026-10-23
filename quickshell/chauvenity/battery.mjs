@@ -15,17 +15,29 @@ export const STATE = {
     PendingDischarge: 6,
 };
 
-// "charging", "alert" (≤ 5 %), "critical" (≤ 10 %), "low" (≤ 20 %) or
-// "normal", judged on the level as the bar rounds it. Plugged in but held by a
-// charge threshold is never low: nothing is draining.
+// "charging", "alert" (≤ 10 %), "low" (≤ 20 %) or "normal", judged on the
+// level as the bar rounds it. Plugged in but held by a charge threshold is
+// never low: nothing is draining.
 export function batteryTone(fraction, state) {
     if (state === STATE.Charging) return "charging";
     if (state === STATE.PendingCharge || state === STATE.FullyCharged) return "normal";
     const shown = Math.round(fraction * 100);
-    if (shown <= 5) return "alert";
-    if (shown <= 10) return "critical";
+    if (shown <= 10) return "alert";
     if (shown <= 20) return "low";
     return "normal";
+}
+
+// The alert's heartbeat at a level: a beat every `period` ms, and how far the
+// bar turns red at its peak (0–1). Faint and slow at 10 %, strong and fast at
+// 1 % and below, so it grows harder to ignore the closer the battery is to
+// empty.
+export function alertPulse(fraction) {
+    const shown = Math.min(10, Math.max(1, Math.round(fraction * 100)));
+    const urgency = (10 - shown) / 9;
+    return {
+        period: Math.round(3000 - 2100 * urgency),
+        peak: Math.round((0.12 + 0.5 * urgency) * 100) / 100,
+    };
 }
 
 export function percent(fraction) {

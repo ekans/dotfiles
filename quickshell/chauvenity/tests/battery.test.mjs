@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
     STATE,
     batteryTone,
+    alertPulse,
     percent,
     stateLabel,
     remaining,
@@ -18,20 +19,30 @@ import {
 
 const T = 1_791_360_000; // 2026-10-07, in seconds like UPower's history
 
-test("batteryTone: charging wins, then alert ≤ 5 %, critical ≤ 10 %, low ≤ 20 %", () => {
+test("batteryTone: charging wins, then alert ≤ 10 %, low ≤ 20 %", () => {
     assert.equal(batteryTone(0.05, STATE.Charging), "charging");
     assert.equal(batteryTone(0.03, STATE.Charging), "charging");
     assert.equal(batteryTone(0.05, STATE.PendingCharge), "normal");
     assert.equal(batteryTone(0.03, STATE.PendingCharge), "normal");
     assert.equal(batteryTone(0.044, STATE.Discharging), "alert"); // shown as 4 %
     assert.equal(batteryTone(0, STATE.Empty), "alert");
-    assert.equal(batteryTone(0.054, STATE.Discharging), "alert"); // shown as 5 %
-    assert.equal(batteryTone(0.055, STATE.Discharging), "critical"); // shown as 6 %
-    assert.equal(batteryTone(0.10, STATE.Discharging), "critical");
-    assert.equal(batteryTone(0.104, STATE.Discharging), "critical"); // shown as 10 %
+    assert.equal(batteryTone(0.10, STATE.Discharging), "alert");
+    assert.equal(batteryTone(0.104, STATE.Discharging), "alert"); // shown as 10 %
+    assert.equal(batteryTone(0.105, STATE.Discharging), "low"); // shown as 11 %
     assert.equal(batteryTone(0.20, STATE.Discharging), "low");
     assert.equal(batteryTone(0.35, STATE.Discharging), "normal");
     assert.equal(batteryTone(1.0, STATE.FullyCharged), "normal");
+});
+
+test("alertPulse beats faster and redder as the level falls", () => {
+    assert.deepEqual(alertPulse(0.10), { period: 3000, peak: 0.12 });
+    assert.deepEqual(alertPulse(0.01), { period: 900, peak: 0.62 });
+    assert.deepEqual(alertPulse(0), alertPulse(0.01));
+    const levels = [0.10, 0.08, 0.05, 0.03, 0.01].map(alertPulse);
+    for (let i = 1; i < levels.length; i++) {
+        assert.ok(levels[i].period < levels[i - 1].period, "faster at a lower level");
+        assert.ok(levels[i].peak > levels[i - 1].peak, "redder at a lower level");
+    }
 });
 
 test("percent rounds a 0–1 fraction and clamps it", () => {
