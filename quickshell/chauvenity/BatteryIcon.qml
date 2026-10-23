@@ -5,11 +5,9 @@ pragma ComponentBehavior: Bound
 // so it takes the bar's colours.
 //
 // While charging a bolt sits across it and a bright fifth of the outline runs
-// round it, like current in a circuit. At 5 % or below on battery (the "alert" tone)
-// the outline turns the bad colour, a "!" replaces the level, and the inside
-// flashes twice every two seconds, a heartbeat. The Timer starts each beat, so
-// between beats nothing animates and the bar is not redrawn: the alert runs
-// on an almost empty battery.
+// round it, like current in a circuit. At 10 % or below on battery (the
+// "alert" tone) the outline turns the bad colour, a "!" replaces the level,
+// and the inside lights up with `glow`, BatteryAlarm's heartbeat.
 
 import QtQuick
 import QtQuick.Shapes
@@ -21,11 +19,13 @@ Item {
     property real level: 0
     // One of battery.mjs batteryTone()'s answers.
     property string tone: "normal"
+    // BatteryAlarm.glow, 0–1: how lit the inside is during the alert.
+    property real glow: 0
 
     readonly property bool charging: icon.tone === "charging"
     readonly property bool alert: icon.tone === "alert"
     readonly property color fill: icon.charging ? icon.theme.goodColor
-        : icon.alert || icon.tone === "critical" ? icon.theme.badColor
+        : icon.alert ? icon.theme.badColor
         : icon.tone === "low" ? icon.theme.warnColor
         : icon.theme.dimColor
     readonly property color outline: icon.alert ? icon.theme.badColor : icon.theme.dimColor
@@ -71,7 +71,7 @@ Item {
         height: body.height - 2
         radius: body.radius - 1
         color: icon.theme.badColor
-        opacity: 0
+        opacity: icon.glow * 0.75
     }
     Item {
         visible: icon.alert
@@ -93,25 +93,6 @@ Item {
             radius: 0.7
             color: icon.theme.fgColor
         }
-    }
-
-    Timer {
-        interval: 2000
-        repeat: true
-        triggeredOnStart: true
-        running: icon.alert
-        onTriggered: beat.restart()
-    }
-
-    // Two flashes, the second longer, then still: about 0.75 s of the 2 s.
-    SequentialAnimation {
-        id: beat
-
-        OpacityAnimator { target: alarm; from: 0; to: 0.75; duration: 90; easing.type: Easing.OutQuad }
-        OpacityAnimator { target: alarm; from: 0.75; to: 0; duration: 180; easing.type: Easing.InQuad }
-        PauseAnimation { duration: 70 }
-        OpacityAnimator { target: alarm; from: 0; to: 0.75; duration: 90; easing.type: Easing.OutQuad }
-        OpacityAnimator { target: alarm; from: 0.75; to: 0; duration: 320; easing.type: Easing.InQuad }
     }
 
     // The charging trace: ShapePath.trim (Qt 6.10) shows a fifth of the

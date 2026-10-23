@@ -531,6 +531,11 @@ ShellRoot {
         }
     }
 
+    // The low-battery heartbeat every bar and battery glyph flashes with.
+    BatteryAlarm {
+        id: batteryAlarm
+    }
+
     // --- the wallpaper ------------------------------------------------------
     Wallpaper {}
 
@@ -681,6 +686,14 @@ ShellRoot {
                     if (item?.visible)
                         item.toggle();
                 }
+            }
+
+            // BatteryAlarm's flash, under everything else on the bar.
+            Rectangle {
+                anchors.fill: parent
+                visible: batteryAlarm.active
+                color: root.badColor
+                opacity: batteryAlarm.glow * batteryAlarm.pulse.peak
             }
 
             // A click on the bar outside the indicators closes the open panel.
@@ -835,6 +848,7 @@ ShellRoot {
                     anchors.verticalCenter: parent.verticalCenter
                     theme: root
                     panels: barPanels
+                    alarm: batteryAlarm
                 }
 
                 Caffeine {

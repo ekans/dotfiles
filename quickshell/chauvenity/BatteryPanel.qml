@@ -19,6 +19,8 @@ Item {
     // UPower's DisplayDevice: what the bar shows.
     required property var device
     property string tone: "normal"
+    // BatteryAlarm.glow, for the glyph's heartbeat.
+    property real glow: 0
     // Whether the panel is open. The history is only fetched then.
     property bool active: false
 
@@ -128,6 +130,7 @@ Item {
                 theme: panel.theme
                 level: panel.level / 100
                 tone: panel.tone
+                glow: panel.glow
             }
             Text {
                 id: headLevel

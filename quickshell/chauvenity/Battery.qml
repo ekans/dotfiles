@@ -2,8 +2,8 @@ pragma ComponentBehavior: Bound
 
 // The bar's battery indicator: a glyph filled to the level, then the level in
 // a fixed width, so the items to its left do not move as it changes. Low and
-// critical (and alert, at 5 % or below) turn the warn and bad colours, charging the
-// good one. A click opens BatteryPanel and its history.
+// alert (10 % or below) turn the warn and bad colours, charging the good one.
+// A click opens BatteryPanel and its history.
 
 import QtQuick
 import Quickshell
@@ -17,6 +17,8 @@ Item {
     required property var theme
     // shell.qml's barPanels: opening this panel closes any other.
     required property var panels
+    // shell.qml's BatteryAlarm, whose beat the glyph flashes with.
+    required property var alarm
     // Its hint, as shell.qml's `keyboard` section describes: the name
     // `ipc call bar toggle` takes, and the letter it asks for.
     property string hintName: "battery"
@@ -47,6 +49,7 @@ Item {
             theme: bat.theme
             level: bat.level
             tone: bat.tone
+            glow: bat.alarm.glow
         }
 
         Text {
@@ -56,7 +59,7 @@ Item {
             width: widest.advanceWidth
             text: Battery.percent(bat.level)
             color: bat.tone === "charging" ? bat.theme.goodColor
-                : bat.tone === "alert" || bat.tone === "critical" ? bat.theme.badColor
+                : bat.tone === "alert" ? bat.theme.badColor
                 : bat.tone === "low" ? bat.theme.warnColor
                 : bat.theme.fgColor
             font.pixelSize: 12
@@ -130,6 +133,7 @@ Item {
             theme: bat.theme
             device: bat.device
             tone: bat.tone
+            glow: bat.alarm.glow
             active: panel.visible
         }
     }
