@@ -13,8 +13,8 @@ function qs(config, target, fn) {
 export const MENU = [
     { key: "b", name: "bb", args: qs("bb-new", "bbnew", "choices"), children: [
         // "" leaves a setting as bb-new has it; a project "?" opens its list.
-        { key: "n", name: "new thread", run: qs("bb-new", "bbnew", "openWith", "{model}", "{effort}", "") },
-        { key: "p", name: "new thread in a project…", run: qs("bb-new", "bbnew", "openWith", "{model}", "{effort}", "?") },
+        { key: "n", name: "new thread", run: qs("bb-new", "bbnew", "openWith", "{model}", "{effort}", "", "{permission}") },
+        { key: "p", name: "new thread in a project…", run: qs("bb-new", "bbnew", "openWith", "{model}", "{effort}", "?", "{permission}") },
         { key: "g", name: "go to…", run: qs("bb-go", "bbgo", "toggle") },
         { key: "a", name: "ask about the screen", run: ["sh", "-c", "exec \"$HOME/.local/bin/pick-to-bb\""] },
     ] },

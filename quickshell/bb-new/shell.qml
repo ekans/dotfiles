@@ -1,8 +1,9 @@
 pragma ComponentBehavior: Bound
 
 // Start a bb thread from anywhere in the niri session: a prompt, and under it
-// the model, the effort, the project and poteto mode the thread starts with —
-// the newest Opus, high, no project, poteto off, until Ctrl+S saves others.
+// the model, the effort, the permission mode, the project and poteto mode the
+// thread starts with — the newest Opus, high, auto, no project, poteto off,
+// until Ctrl+S saves others.
 //
 // The overlay opens over IPC, from Super+Space b n in chauvenity's leader menu:
 //
@@ -12,14 +13,18 @@ pragma ComponentBehavior: Bound
 //
 //     qs -c bb-new ipc call bbnew get effort
 //     qs -c bb-new ipc call bbnew set effort max     a model by id or name, an
-//                                                    effort, a project by id or
-//                                                    name, or none
+//                                                    effort, a permission mode
+//                                                    (accept-edits, auto, full),
+//                                                    a project by id or name,
+//                                                    or none
 //     qs -c bb-new ipc call bbnew set poteto on      poteto on|off
 //
 // Super+Space b (chauvenity's leader menu) opens it with other settings for
 // this thread only, and asks what to offer:
 //
-//     qs -c bb-new ipc call bbnew openWith "Fable 5.1" max ""   "" leaves one
+//     qs -c bb-new ipc call bbnew openWith "Fable 5.1" max "" full
+//                                                    model, effort, project,
+//                                                    permission; "" leaves one
 //                                                    as it is; a project "?"
 //                                                    opens the project list
 //     qs -c bb-new ipc call bbnew choices            as JSON, for the menu
@@ -41,7 +46,8 @@ pragma ComponentBehavior: Bound
 // from the defaults.
 //
 // Keys: Enter start · Shift+Enter new line · Alt+M / Alt+Shift+M next /
-// previous model · Alt+E / Alt+Shift+E next / previous effort · Alt+P pick the
+// previous model · Alt+E / Alt+Shift+E next / previous effort · Alt+A /
+// Alt+Shift+A next / previous permission mode · Alt+P pick the
 // project · Alt+T poteto mode (the /poteto-mode prefix shows in the prompt) · Ctrl+S
 // save these settings as the defaults · Esc close.
 // Project list: type to filter · ↑↓ or Ctrl+J/K select · Enter pick · Esc or
@@ -89,6 +95,7 @@ ShellRoot {
     // What the thread starts with: ids, "" for no project.
     property string model: Logic.DEFAULTS.model
     property string effort: Logic.DEFAULTS.effort
+    property string permission: Logic.DEFAULTS.permission
     property string project: Logic.DEFAULTS.project
     // On while the prompt starts with /poteto-mode, typed or put there by Alt+T.
     readonly property bool poteto: Logic.hasPoteto(promptInput.text)
@@ -111,7 +118,7 @@ ShellRoot {
     readonly property var hints: root.picking
         ? [["type", "filter"], ["↑↓", "select"], ["Enter", "pick"], ["Esc", "back"]]
         : [["Enter", "start"], ["Shift+Enter", "new line"], ["Alt+M", "model"], ["Alt+E", "effort"],
-           ["Alt+P", "project"], ["Alt+T", "poteto"], ["Ctrl+S", "save as default"], ["Esc", "close"]]
+           ["Alt+A", "permission"], ["Alt+P", "project"], ["Alt+T", "poteto"], ["Ctrl+S", "save as default"], ["Esc", "close"]]
 
     // bb listed something else: keep the settings to what it has.
     onModelsChanged: root.settle()
@@ -133,6 +140,7 @@ ShellRoot {
             // The defaults: ids, "" for no project.
             property string model: Logic.DEFAULTS.model
             property string effort: Logic.DEFAULTS.effort
+            property string permission: Logic.DEFAULTS.permission
             property string project: Logic.DEFAULTS.project
             property bool poteto: Logic.DEFAULTS.poteto
             // What bb last listed: [{id, name, efforts, defaultEffort}] and
@@ -163,8 +171,8 @@ ShellRoot {
         }
         // Opens with these settings over those it would open with; "" leaves
         // one as it is. Answers why not, or "" once it is opening.
-        function openWith(model: string, effort: string, project: string): string {
-            const asked = Logic.readOpenWith(model, effort, project, root.models, root.projects);
+        function openWith(model: string, effort: string, project: string, permission: string): string {
+            const asked = Logic.readOpenWith(model, effort, project, permission, root.models, root.projects);
             if (asked.error)
                 return asked.error;
             root.asked = asked;
@@ -176,17 +184,18 @@ ShellRoot {
         }
         // What Super+Space's bb page offers, as JSON: see leaderArguments.
         function choices(): string {
-            return JSON.stringify(Logic.leaderArguments(root.models, { model: store.model, effort: store.effort }));
+            return JSON.stringify(Logic.leaderArguments(root.models, { model: store.model, effort: store.effort, permission: store.permission }));
         }
-        // A default: model, effort, project ("none" for no project) or poteto.
+        // A default: model, effort, permission, project ("none" for no
+        // project) or poteto.
         function get(key: string): string {
             if (key === "project")
                 return store.project || "none";
             if (key === "poteto")
                 return store.poteto ? "on" : "off";
-            if (key === "model" || key === "effort")
+            if (key === "model" || key === "effort" || key === "permission")
                 return store[key];
-            return `unknown setting "${key}"; model, effort, project or poteto`;
+            return `unknown setting "${key}"; model, effort, permission, project or poteto`;
         }
         // Sets a default and answers "ok", or why not. A new model brings its
         // own default effort if it does not take the current one.
@@ -238,7 +247,7 @@ ShellRoot {
         root.asked = null;
         if (!asked)
             return;
-        root.apply(Logic.normalize(Object.assign({ model: root.model, effort: root.effort, project: root.project, poteto: root.poteto }, asked.change),
+        root.apply(Logic.normalize(Object.assign({ model: root.model, effort: root.effort, permission: root.permission, project: root.project, poteto: root.poteto }, asked.change),
                                    root.models, root.projects));
         if (asked.pick && !root.picking)
             root.beginPick();
@@ -250,16 +259,17 @@ ShellRoot {
     }
 
     function useDefaults() {
-        root.apply(Logic.normalize({ model: store.model, effort: store.effort, project: store.project, poteto: store.poteto }, root.models, root.projects));
+        root.apply(Logic.normalize({ model: store.model, effort: store.effort, permission: store.permission, project: store.project, poteto: store.poteto }, root.models, root.projects));
     }
 
     function settle() {
-        root.apply(Logic.normalize({ model: root.model, effort: root.effort, project: root.project, poteto: root.poteto }, root.models, root.projects));
+        root.apply(Logic.normalize({ model: root.model, effort: root.effort, permission: root.permission, project: root.project, poteto: root.poteto }, root.models, root.projects));
     }
 
     function apply(settings) {
         root.model = settings.model;
         root.effort = settings.effort;
+        root.permission = settings.permission;
         root.project = settings.project;
         root.setPoteto(settings.poteto);
     }
@@ -330,13 +340,18 @@ ShellRoot {
         root.effort = Logic.nextEffort(root.currentModel, root.effort, step);
     }
 
+    function cyclePermission(step) {
+        root.permission = Logic.cycle(Logic.PERMISSIONS, root.permission, step);
+    }
+
     function saveDefaults() {
         store.model = root.model;
         store.effort = root.effort;
+        store.permission = root.permission;
         store.project = root.project;
         store.poteto = root.poteto;
         root.notice = "Saved as the defaults: " + Logic.modelName(root.models, root.model) + " · " + root.effort
-            + " · " + Logic.projectName(root.projects, root.project) + (root.poteto ? " · poteto on" : "");
+            + " · " + root.permission + " · " + Logic.projectName(root.projects, root.project) + (root.poteto ? " · poteto on" : "");
         noticeTimer.restart();
     }
 
@@ -383,7 +398,7 @@ ShellRoot {
         root.error = "";
         root.notice = "";
         root.starting = true;
-        spawner.exec(Logic.spawnCommand(root.bb, { model: root.model, effort: root.effort, project: root.project }, prompt));
+        spawner.exec(Logic.spawnCommand(root.bb, { model: root.model, effort: root.effort, permission: root.permission, project: root.project }, prompt));
         spawnTimeout.restart();
     }
 
@@ -444,6 +459,8 @@ ShellRoot {
             root.cycleModel(shift ? -1 : 1);
         } else if (alt && key === Qt.Key_E) {
             root.cycleEffort(shift ? -1 : 1);
+        } else if (alt && key === Qt.Key_A) {
+            root.cyclePermission(shift ? -1 : 1);
         } else if (alt && key === Qt.Key_P) {
             if (root.picking)
                 root.endPick();
@@ -654,6 +671,12 @@ ShellRoot {
                             label: "effort"
                             value: root.effort
                             changed: root.effort !== store.effort
+                            theme: root.theme
+                        }
+                        Chip {
+                            label: "permission"
+                            value: root.permission
+                            changed: root.permission !== store.permission
                             theme: root.theme
                         }
                         Chip {
