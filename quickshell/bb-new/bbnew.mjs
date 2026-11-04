@@ -1,5 +1,5 @@
 // Logic for the new bb thread overlay (shell.qml): reading what bb lists,
-// cycling the model and the effort, the project list, the poteto switch, and
+// cycling the model, the effort and the permission mode, the project list, the poteto switch, and
 // the `bb thread spawn` command.
 //
 // Plain ECMAScript, no QML: the overlay imports it and tests/bbnew.test.mjs
@@ -17,7 +17,12 @@ export const NO_PROJECT = { id: "", name: "No project" };
 
 // What a thread starts with until Ctrl+S saves something else. Ids; "" is no
 // project.
-export const DEFAULTS = { model: "opus", effort: "high", project: "", poteto: false };
+export const DEFAULTS = { model: "opus", effort: "high", permission: "auto", project: "", poteto: false };
+
+// bb's permission modes, from the least the agent may do alone to the most.
+// accept-edits asks before anything outside the workspace sandbox, auto lets
+// Claude Code's own review decide, full drops the sandbox and every approval.
+export const PERMISSIONS = ["accept-edits", "auto", "full"];
 
 // What poteto mode puts at the start of the prompt, where it shows. The prompt
 // text is the only record of the mode: it is on while the text starts with this.
@@ -43,7 +48,7 @@ export const FALLBACK_MODELS = [
     { id: "opus", name: "Opus", efforts: ["low", "medium", "high", "xhigh", "ultracode", "max"], defaultEffort: "high" },
 ];
 
-const SETTINGS = ["model", "effort", "project", "poteto"];
+const SETTINGS = ["model", "effort", "permission", "project", "poteto"];
 
 function parseJson(text) {
     try {
@@ -179,7 +184,7 @@ export function effortFor(model, effort) {
 }
 
 // `settings` made to fit what bb lists: a model it has, an effort that model
-// takes, and no project in place of one it no longer lists. An empty project
+// takes, a permission mode bb has, and no project in place of one it no longer lists. An empty project
 // list is bb not having answered yet, so the project stays.
 export function normalize(settings, models, projects) {
     const model = findModel(models, settings.model) || models[0] || null;
@@ -189,6 +194,7 @@ export function normalize(settings, models, projects) {
     return {
         model: model ? model.id : settings.model,
         effort: effortFor(model, settings.effort),
+        permission: PERMISSIONS.indexOf(settings.permission) !== -1 ? settings.permission : DEFAULTS.permission,
         project: project,
         poteto: settings.poteto === true,
     };
@@ -265,7 +271,8 @@ export function isBlank(text) {
 // the prompt, as its prefix.
 export function spawnCommand(bb, settings, prompt) {
     const command = [bb, "thread", "spawn", "--json", "--provider", PROVIDER,
-        "--model", settings.model, "--reasoning-level", settings.effort];
+        "--model", settings.model, "--reasoning-level", settings.effort,
+        "--permission-mode", settings.permission];
     if (settings.project)
         command.push("--project", settings.project);
     else
@@ -292,7 +299,7 @@ export function parseSpawn(stdout, stderr, code) {
 // A default set with `qs ipc call bbnew set <key> <value>`, checked against what
 // bb lists: {value, error}, value the id to store. A model or a project may be
 // given by id or by name, no project as "none"; an effort has to be one the
-// default model takes; poteto is on or off.
+// default model takes; a permission mode one of PERMISSIONS; poteto is on or off.
 export function checkDefault(key, value, models, projects, modelId) {
     const v = String(value || "").trim();
     const lower = v.toLowerCase();
@@ -309,6 +316,11 @@ export function checkDefault(key, value, models, projects, modelId) {
             return { value: lower, error: "" };
         return { value: "", error: modelName(models, modelId) + " takes " + efforts.join(", ") + ", not " + JSON.stringify(v) };
     }
+    if (key === "permission") {
+        if (PERMISSIONS.indexOf(lower) !== -1)
+            return { value: lower, error: "" };
+        return { value: "", error: "permission takes " + PERMISSIONS.join(", ") + ", not " + JSON.stringify(v) };
+    }
     if (key === "project") {
         if (lower === "" || lower === "none" || lower === NO_PROJECT.name.toLowerCase())
             return { value: "", error: "" };
@@ -324,13 +336,13 @@ export function checkDefault(key, value, models, projects, modelId) {
             return { value: false, error: "" };
         return { value: false, error: "poteto takes on or off, not " + JSON.stringify(v) };
     }
-    return { value: "", error: "unknown setting " + JSON.stringify(key) + "; model, effort, project or poteto" };
+    return { value: "", error: "unknown setting " + JSON.stringify(key) + "; model, effort, permission, project or poteto" };
 }
 
 // --- Super+Space's bb page ----------------------------------------------------------------
 // chauvenity's leader menu (its leader-menu.mjs) asks `ipc call bbnew
 // choices` what its bb page offers, then opens the overlay with
-// `ipc call bbnew openWith <model> <effort> <project>`.
+// `ipc call bbnew openWith <model> <effort> <project> <permission>`.
 
 // How many of the models the bb page steps through: the aliases, which come
 // first.
@@ -338,7 +350,8 @@ export const LEADER_MODELS = 3;
 
 // The bb page's arguments, in the shape chauvenity's leader.mjs reads: the
 // first models bb lists (and the default model, if it is not one of them),
-// and the default model's efforts, each with its default as its value.
+// the default model's efforts and the permission modes, each with its default
+// as its value.
 export function leaderArguments(models, defaults) {
     const model = findModel(models, defaults.model);
     const offered = models.slice(0, LEADER_MODELS);
@@ -353,6 +366,10 @@ export function leaderArguments(models, defaults) {
             key: "e", name: "effort", value: effortFor(model, defaults.effort),
             choices: model.efforts.map(e => ({ value: e, name: e })),
         });
+    args.push({
+        key: "a", name: "permission", value: PERMISSIONS.indexOf(defaults.permission) !== -1 ? defaults.permission : DEFAULTS.permission,
+        choices: PERMISSIONS.map(p => ({ value: p, name: p })),
+    });
     return args;
 }
 
@@ -360,7 +377,7 @@ export function leaderArguments(models, defaults) {
 // the settings given, as ids, to put over those the overlay opens with: ""
 // leaves a setting as it is, a project "none" is no project, and "?" opens
 // the project list instead.
-export function readOpenWith(model, effort, project, models, projects) {
+export function readOpenWith(model, effort, project, permission, models, projects) {
     const change = {};
     if (String(model || "").trim() !== "") {
         const checked = checkDefault("model", model, models, projects, "");
@@ -371,6 +388,12 @@ export function readOpenWith(model, effort, project, models, projects) {
     const e = String(effort || "").trim().toLowerCase();
     if (e !== "")
         change.effort = e;
+    if (String(permission || "").trim() !== "") {
+        const checked = checkDefault("permission", permission, models, projects, "");
+        if (checked.error)
+            return { change: {}, pick: false, error: checked.error };
+        change.permission = checked.value;
+    }
     const p = String(project || "").trim();
     if (p !== "" && p !== "?") {
         const checked = checkDefault("project", p, models, projects, "");

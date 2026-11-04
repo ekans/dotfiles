@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     DEFAULTS,
+    PERMISSIONS,
     FALLBACK_MODELS,
     NO_PROJECT,
     parseModels,
@@ -153,7 +154,7 @@ test("effortFor keeps an effort the model takes, else its default, else its firs
 test("normalize fits the settings to what bb lists", () => {
     assert.deepEqual(normalize(DEFAULTS, models, projects), DEFAULTS);
     assert.deepEqual(normalize({ model: "claude-sonnet-5-5", effort: "xhigh", project: "proj_kmyjbmui8h" }, models, projects),
-        { model: "claude-sonnet-5-5", effort: "medium", project: "proj_kmyjbmui8h", poteto: false });
+        { model: "claude-sonnet-5-5", effort: "medium", permission: "auto", project: "proj_kmyjbmui8h", poteto: false });
     // A model bb dropped: its first one.
     assert.equal(normalize({ model: "claude-gone", effort: "high", project: "" }, models, projects).model, "opus");
     // A project bb dropped: no project; before bb answers, it stays.
@@ -161,9 +162,16 @@ test("normalize fits the settings to what bb lists", () => {
     assert.equal(normalize({ model: "claude-opus-5-5", effort: "high", project: "proj_gone" }, models, []).project, "proj_gone");
 });
 
+test("normalize keeps a permission mode bb has, and puts auto for any other", () => {
+    for (const permission of PERMISSIONS)
+        assert.equal(normalize({ model: "opus", effort: "high", permission: permission, project: "" }, models, projects).permission, permission);
+    assert.equal(normalize({ model: "opus", effort: "high", permission: "bypass", project: "" }, models, projects).permission, "auto");
+    assert.equal(normalize({ model: "opus", effort: "high", project: "" }, models, projects).permission, "auto");
+});
+
 test("changes tells each setting that is not the default", () => {
-    assert.deepEqual(changes(DEFAULTS, DEFAULTS), { model: false, effort: false, project: false, poteto: false });
-    assert.deepEqual(changes({ model: DEFAULTS.model, effort: "max", project: "proj_x", poteto: false }, DEFAULTS), { model: false, effort: true, project: true, poteto: false });
+    assert.deepEqual(changes(DEFAULTS, DEFAULTS), { model: false, effort: false, permission: false, project: false, poteto: false });
+    assert.deepEqual(changes({ model: DEFAULTS.model, effort: "max", permission: "full", project: "proj_x", poteto: false }, DEFAULTS), { model: false, effort: true, permission: true, project: true, poteto: false });
     assert.equal(changes({ model: "opus", effort: "high", project: "", poteto: true }, DEFAULTS).poteto, true);
 });
 
@@ -181,22 +189,23 @@ test("filterProjects: no project first, prefix matches before the rest", () => {
 test("spawnCommand sends a thread with no project to the personal workspace", () => {
     assert.deepEqual(spawnCommand("bb", DEFAULTS, "fix it"), [
         "bb", "thread", "spawn", "--json", "--provider", "claude-code",
-        "--model", "opus", "--reasoning-level", "high",
+        "--model", "opus", "--reasoning-level", "high", "--permission-mode", "auto",
         "--project", "proj_personal", "--environment-provider", "personal-workspace",
         "--prompt=fix it",
     ]);
 });
 
 test("spawnCommand leaves the environment of a project to bb", () => {
-    const command = spawnCommand("/x/bb", { model: "claude-sonnet-5-5", effort: "max", project: "proj_kmyjbmui8h" }, "-v\nsecond line");
+    const command = spawnCommand("/x/bb", { model: "claude-sonnet-5-5", effort: "max", permission: "full", project: "proj_kmyjbmui8h" }, "-v\nsecond line");
     assert.deepEqual(command.slice(-3), ["--project", "proj_kmyjbmui8h", "--prompt=-v\nsecond line"]);
     assert.ok(!command.includes("--environment-provider"));
+    assert.equal(command[command.indexOf("--permission-mode") + 1], "full");
 });
 
 test("spawnCommand sends the prompt as given, the poteto prefix with the rest", () => {
-    assert.deepEqual(spawnCommand("bb", { model: "opus", effort: "high", project: "", poteto: true }, "/poteto-mode fix it"), [
+    assert.deepEqual(spawnCommand("bb", { model: "opus", effort: "high", permission: "auto", project: "", poteto: true }, "/poteto-mode fix it"), [
         "bb", "thread", "spawn", "--json", "--provider", "claude-code",
-        "--model", "opus", "--reasoning-level", "high",
+        "--model", "opus", "--reasoning-level", "high", "--permission-mode", "auto",
         "--project", "proj_personal", "--environment-provider", "personal-workspace",
         "--prompt=/poteto-mode fix it",
     ]);
@@ -270,12 +279,15 @@ test("checkDefault takes ids or names and refuses what bb does not list", () => 
     assert.deepEqual(checkDefault("project", "none", models, projects, ""), { value: "", error: "" });
     assert.deepEqual(checkDefault("project", "No project", models, projects, ""), { value: "", error: "" });
     assert.match(checkDefault("project", "nope", models, projects, "").error, /unknown project "nope"/);
-    assert.match(checkDefault("colour", "red", models, projects, "").error, /unknown setting "colour"; model, effort, project or poteto/);
+    assert.match(checkDefault("colour", "red", models, projects, "").error, /unknown setting "colour"; model, effort, permission, project or poteto/);
     assert.deepEqual(checkDefault("poteto", "ON", models, projects, ""), { value: true, error: "" });
     assert.deepEqual(checkDefault("poteto", "off", models, projects, ""), { value: false, error: "" });
     assert.deepEqual(checkDefault("poteto", "Yes", models, projects, ""), { value: true, error: "" });
     assert.deepEqual(checkDefault("poteto", "0", models, projects, ""), { value: false, error: "" });
     assert.match(checkDefault("poteto", "maybe", models, projects, "").error, /poteto takes on or off, not "maybe"/);
+    assert.deepEqual(checkDefault("permission", "Accept-Edits", models, projects, ""), { value: "accept-edits", error: "" });
+    assert.deepEqual(checkDefault("permission", "full", models, projects, ""), { value: "full", error: "" });
+    assert.match(checkDefault("permission", "bypass", models, projects, "").error, /permission takes accept-edits, auto, full, not "bypass"/);
 });
 
 test("leaderArguments offers the aliases and the default model's efforts", () => {
@@ -290,6 +302,14 @@ test("leaderArguments offers the aliases and the default model's efforts", () =>
     });
     assert.equal(args[1].value, "high");
     assert.deepEqual(args[1].choices.map(c => c.value), opus.efforts);
+    assert.deepEqual(args[2], {
+        key: "a", name: "permission", value: "auto",
+        choices: PERMISSIONS.map(p => ({ value: p, name: p })),
+    });
+});
+
+test("leaderArguments starts the permission mode at the saved default", () => {
+    assert.equal(leaderArguments(models, { model: "opus", effort: "high", permission: "full" })[2].value, "full");
 });
 
 test("leaderArguments puts a default model past the first ones first", () => {
@@ -302,19 +322,20 @@ test("leaderArguments puts a default model past the first ones first", () => {
 
 test("leaderArguments has no effort for a model that takes none", () => {
     const args = leaderArguments(models, { model: "claude-haiku-5-5", effort: "high" });
-    assert.deepEqual(args.map(a => a.name), ["model"]);
+    assert.deepEqual(args.map(a => a.name), ["model", "permission"]);
 });
 
 test("readOpenWith changes only what it is given", () => {
-    assert.deepEqual(readOpenWith("", "", "", models, projects), { change: {}, pick: false, error: "" });
-    assert.deepEqual(readOpenWith("Sonnet 5.5", "MAX", "bolt", models, projects), {
-        change: { model: "claude-sonnet-5-5", effort: "max", project: "proj_kmyjbmui8h" }, pick: false, error: "",
+    assert.deepEqual(readOpenWith("", "", "", "", models, projects), { change: {}, pick: false, error: "" });
+    assert.deepEqual(readOpenWith("Sonnet 5.5", "MAX", "bolt", "FULL", models, projects), {
+        change: { model: "claude-sonnet-5-5", effort: "max", permission: "full", project: "proj_kmyjbmui8h" }, pick: false, error: "",
     });
-    assert.deepEqual(readOpenWith("", "", "none", models, projects), { change: { project: "" }, pick: false, error: "" });
-    assert.deepEqual(readOpenWith("", "low", "?", models, projects), { change: { effort: "low" }, pick: true, error: "" });
+    assert.deepEqual(readOpenWith("", "", "none", "", models, projects), { change: { project: "" }, pick: false, error: "" });
+    assert.deepEqual(readOpenWith("", "low", "?", "", models, projects), { change: { effort: "low" }, pick: true, error: "" });
 });
 
-test("readOpenWith refuses a model or a project bb does not list", () => {
-    assert.match(readOpenWith("gpt", "", "", models, projects).error, /unknown model "gpt"/);
-    assert.match(readOpenWith("", "", "nope", models, projects).error, /unknown project "nope"/);
+test("readOpenWith refuses a model, a project or a permission mode bb does not list", () => {
+    assert.match(readOpenWith("gpt", "", "", "", models, projects).error, /unknown model "gpt"/);
+    assert.match(readOpenWith("", "", "nope", "", models, projects).error, /unknown project "nope"/);
+    assert.match(readOpenWith("", "", "", "bypass", models, projects).error, /permission takes accept-edits, auto, full/);
 });
