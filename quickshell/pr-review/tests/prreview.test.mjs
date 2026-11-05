@@ -13,9 +13,11 @@ import {
     listCommand,
     parsePrs,
     previewBody,
+    plainLinks,
     summarizeChecks,
     parseCi,
     CI_LOOK,
+    ciDetail,
     parseProjects,
     repoOf,
     findProject,
@@ -98,6 +100,19 @@ test("strips HTML comments from the preview body", () => {
     assert.equal(previewBody("<!-- a -->\nHello\n<!--\nmulti\nline\n-->\nworld"), "Hello\n\nworld");
     assert.equal(previewBody("<!-- only -->"), "");
     assert.equal(previewBody(null), "");
+});
+
+test("shows Markdown links as their labels and bare URLs as code", () => {
+    assert.equal(plainLinks("See [the docs](https://acme.dev/docs \"Docs\") now"), "See the docs now");
+    assert.equal(plainLinks("![diagram](https://acme.dev/a.png) and [![badge](https://acme.dev/b.svg)](https://acme.dev)"), "diagram and badge");
+    assert.equal(plainLinks("Fixes https://acme.dev/issues/4 and <https://acme.dev/x>."), "Fixes `https://acme.dev/issues/4` and `https://acme.dev/x`.");
+    assert.equal(plainLinks("(see https://acme.dev/y)"), "(see `https://acme.dev/y`)");
+});
+
+test("leaves URLs and links inside code alone", () => {
+    const code = "Run `curl https://acme.dev/x [a](b)` then\n```\ncurl https://acme.dev/y\n```";
+    assert.equal(plainLinks(code), code);
+    assert.equal(plainLinks(""), "");
 });
 
 test("says why gh listed nothing", () => {
@@ -189,6 +204,11 @@ test("gives every CI state a label and a palette role", () => {
     assert.deepEqual(CI_LOOK.failure, { label: "failing", color: "bad" });
     assert.deepEqual(CI_LOOK.success, { label: "passed", color: "good" });
     assert.deepEqual(CI_LOOK.none, { label: "no checks", color: "dim" });
+});
+
+test("counts the checks that are not zero", () => {
+    assert.equal(ciDetail({ passed: 3, failed: 1, pending: 2 }), "3 passed, 1 failed, 2 pending");
+    assert.equal(ciDetail({ passed: 0, failed: 0, pending: 0 }), "");
 });
 
 // --- projects -------------------------------------------------------------------

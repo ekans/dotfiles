@@ -113,6 +113,22 @@ export function previewBody(body) {
     return String(body || "").replace(/<!--[\s\S]*?-->/g, "").trim();
 }
 
+// Qt draws a Markdown link in its own dark blue whatever Text.linkColor says,
+// unreadable on the card, and the preview has no pointer to follow one with.
+// So a link shows as its label, a bare URL as code, and an image as its alt
+// text. Code spans and fences are left as they are.
+export function plainLinks(markdown) {
+    const unlink = text => text.replace(/!?\[([^\]]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, "$1");
+    return String(markdown || "").split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, i) => {
+        if (i % 2 === 1)
+            return part;
+        // Twice: an image inside a link leaves a link behind the first time.
+        return unlink(unlink(part))
+            .replace(/<(https?:\/\/[^>\s]+)>/g, "`$1`")
+            .replace(/(^|[\s(])(https?:\/\/[^\s)<>\]]+)/g, "$1`$2`");
+    }).join("");
+}
+
 // --- CI -----------------------------------------------------------------------------
 
 export function ciCommand(pr) {
@@ -176,6 +192,18 @@ export const CI_LOOK = {
     success: { label: "passed", color: "good" },
     none: { label: "no checks", color: "dim" },
 };
+
+// "3 passed, 1 failed, 2 pending": the counts that are not zero.
+export function ciDetail(ci) {
+    const parts = [];
+    if (ci.passed > 0)
+        parts.push(ci.passed + " passed");
+    if (ci.failed > 0)
+        parts.push(ci.failed + " failed");
+    if (ci.pending > 0)
+        parts.push(ci.pending + " pending");
+    return parts.join(", ");
+}
 
 // --- bb projects --------------------------------------------------------------------
 
