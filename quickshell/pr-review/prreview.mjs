@@ -1,6 +1,6 @@
-// Logic for the pull request review overlay (shell.qml): reading `gh`'s lists,
-// CI state and diffs, matching a repo to a bb project, and the bb thread that
-// reads a pull request.
+// Logic for the pull request review overlay (shell.qml): the GraphQL search that
+// lists the pull requests with their CI, `gh`'s diffs, matching a repo to a bb
+// project, and the bb thread that reads a pull request.
 //
 // Plain ECMAScript, no QML: the overlay imports it and tests/prreview.test.mjs
 // runs it under node. Keep to what Qt's JavaScript engine parses — no object
@@ -28,10 +28,6 @@ export function commandError(tool, stdout, stderr, code) {
     return line ? tool + ": " + line : tool + " exited with " + code;
 }
 
-export function listError(stdout, stderr, code) {
-    return commandError("gh", stdout, stderr, code);
-}
-
 // "5m", "3h", "2d": how long ago, for a row's corner.
 export function age(at, now) {
     const minutes = Math.max(0, Math.floor((now - at) / 60000));
@@ -53,8 +49,8 @@ export function parseFocusedOutput(text) {
 // --- the extra search qualifiers --------------------------------------------------
 // They name private repos, so they live in the user's config, not in this repo.
 
-// `$XDG_CONFIG_HOME/pr-review/search`: whitespace-separated `gh search`
-// qualifiers, a # starting a comment.
+// `$XDG_CONFIG_HOME/pr-review/search`: whitespace-separated search qualifiers,
+// a # starting a comment.
 export function parseSearch(text) {
     const out = [];
     for (const line of String(text || "").split("\n")) {
@@ -106,44 +102,81 @@ export function toggleHidden(hidden, url) {
 
 // --- the pull requests ------------------------------------------------------------
 
-const PR_FIELDS = "repository,number,title,url,author,updatedAt,body,labels";
+const QUERY = `query($q: String!, $endCursor: String) {
+  search(query: $q, type: ISSUE, first: 100, after: $endCursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      ... on PullRequest {
+        url number title body updatedAt
+        author { login __typename }
+        repository { nameWithOwner name }
+        labels(first: 20) { nodes { name } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion }
+          ... on StatusContext { context state }
+        } } } } } }
+      }
+    }
+  }
+}`;
 
 // A draft is not waiting for a review yet, so the queue leaves drafts out.
-// After `--` so a qualifier such as -repo:a/b is not read as a flag.
 export function listCommand(qualifiers) {
-    return ["gh", "search", "prs", "--review-requested=@me", "--state=open", "--draft=false",
-        "--sort=updated", "--limit", "200", "--json", PR_FIELDS, "--"].concat(qualifiers);
+    const search = ["is:pr", "is:open", "review-requested:@me", "draft:false", "sort:updated-desc"].concat(qualifiers).join(" ");
+    return ["gh", "api", "graphql", "--paginate", "-f", "query=" + QUERY, "-f", "q=" + search, "--jq", ".data.search.nodes[]"];
+}
+
+// The checks of a pull request's last commit, none when it has no rollup.
+function checksOf(raw) {
+    const commit = ((raw.commits || {}).nodes || [])[0];
+    const rollup = (commit && commit.commit && commit.commit.statusCheckRollup) || {};
+    return (rollup.contexts || {}).nodes || [];
 }
 
 // A Pr: {url, repo: "owner/name", repoName, number, title, author, bot,
-// updatedAt (ms), body, labels: [name]}.
+// updatedAt (ms), body, labels: [name], ci}.
 function toPr(raw) {
     if (!raw || typeof raw.url !== "string" || typeof raw.number !== "number")
         return null;
     const repository = raw.repository || {};
     const repo = String(repository.nameWithOwner || "");
+    // Null for a deleted account.
     const author = raw.author || {};
-    const login = String(author.login || "");
     return {
         url: raw.url,
         repo: repo,
         repoName: String(repository.name || repo.split("/").pop()),
         number: raw.number,
         title: String(raw.title || ""),
-        author: login,
-        bot: author.is_bot === true || author.type === "Bot" || /\[bot\]$/.test(login),
+        author: String(author.login || ""),
+        bot: author.__typename === "Bot",
         updatedAt: Date.parse(raw.updatedAt) || 0,
         body: String(raw.body || ""),
-        labels: (Array.isArray(raw.labels) ? raw.labels : []).map(l => String(l && l.name || "")).filter(n => n !== ""),
+        labels: ((raw.labels || {}).nodes || []).map(l => String(l && l.name || "")).filter(n => n !== ""),
+        ci: summarizeChecks(checksOf(raw)),
     };
 }
 
-// `gh search prs --json`'s answer as [Pr], or null when it is not that.
+// The query's pull requests, one JSON object per line as `--jq` prints them,
+// as [Pr]; null when a line is not JSON. A node that is not a pull request
+// comes as `{}` and is dropped.
 export function parsePrs(text) {
-    const value = parseJson(text);
-    if (!Array.isArray(value))
-        return null;
-    return value.map(toPr).filter(p => p !== null);
+    const prs = [];
+    for (const line of String(text || "").split("\n")) {
+        if (line.trim() === "")
+            continue;
+        let node;
+        try {
+            node = JSON.parse(line);
+        } catch (e) {
+            return null;
+        }
+        const pr = toPr(node);
+        if (pr !== null)
+            prs.push(pr);
+    }
+    return prs;
 }
 
 // The description for the preview: GitHub templates leave HTML comments in it.
@@ -168,10 +201,6 @@ export function plainLinks(markdown) {
 }
 
 // --- CI -----------------------------------------------------------------------------
-
-export function ciCommand(pr) {
-    return ["gh", "pr", "view", String(pr.number), "-R", pr.repo, "--json", "statusCheckRollup"];
-}
 
 // One outcome per check, from the table of its kind. A conclusion or state
 // that is in neither table has not decided anything yet: pending.
@@ -213,14 +242,6 @@ export function summarizeChecks(checks) {
     else if (ci.passed > 0)
         ci.state = "success";
     return ci;
-}
-
-// `gh pr view --json statusCheckRollup`'s answer as a Ci, or null.
-export function parseCi(text) {
-    const value = parseJson(text);
-    if (!value || !Array.isArray(value.statusCheckRollup))
-        return null;
-    return summarizeChecks(value.statusCheckRollup);
 }
 
 // How each state reads: its label and the palette role it is drawn in.

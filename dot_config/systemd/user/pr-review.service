@@ -1,6 +1,6 @@
 # The pull requests waiting for your review in the niri session: serves the
 # Super+Space p overlay. Config in ~/.config/quickshell/pr-review/. Repos to
-# leave out are `gh search` qualifiers in ~/.config/pr-review/search, which is
+# leave out are GitHub search qualifiers in ~/.config/pr-review/search, which is
 # not in this repo.
 [Unit]
 Description=Pull request review overlay (niri session)

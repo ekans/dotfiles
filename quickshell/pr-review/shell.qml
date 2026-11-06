@@ -16,9 +16,10 @@ pragma ComponentBehavior: Bound
 // It runs as pr-review.service, which niri.service pulls in through
 // ~/.config/systemd/user/niri.service.d/50-pr-review.conf like bb-go.service.
 //
-// The queue is `gh search prs --review-requested=@me --draft=false`: a draft
-// does not wait for a review yet. The last answer shows at once on each open
-// while gh is asked again. Repos to leave out are `gh search` qualifiers in
+// The queue is one GraphQL search through `gh api graphql`, review-requested:@me
+// draft:false (a draft does not wait for a review yet), and it brings each
+// pull request's CI checks with it. The last answer shows at once on each open
+// while gh is asked again. Repos to leave out are search qualifiers in
 // $XDG_CONFIG_HOME/pr-review/search, not in this repo: they name private work.
 // x hides the focused pull request, one you will not review, and h lists the
 // hidden ones alone, where x unhides. The hidden URLs, one per line, are state
@@ -91,19 +92,13 @@ ShellRoot {
     // A string notifies only when it differs, and every list refresh makes a new focusedPr object.
     readonly property string focusedUrl: root.focusedPr ? root.focusedPr.url : ""
 
-    // The extra `gh search` qualifiers, once their file has been read or found
+    // The extra search qualifiers, once their file has been read or found
     // missing: asking gh sooner would not leave the excluded repos out.
     property var qualifiers: []
     property bool searchReady: false
 
     property string error: ""
     property string notice: ""
-
-    // url -> {phase: "loading" | "ready" | "error", ci, at, error}
-    property var ciCache: ({})
-    property var ciFetching: null
-    property var ciWanted: null
-    readonly property var focusedCi: root.focusedPr ? (root.ciCache[root.focusedPr.url] ?? null) : null
 
     // The diff being read, or last read: {pr, url, updatedAt, phase: "loading"
     // | "ready" | "error", files, styled, error}. `styled` maps a path to its
@@ -247,7 +242,7 @@ ShellRoot {
             root.listing = false;
             const prs = code === 0 ? Logic.parsePrs(listOut.text) : null;
             if (prs === null) {
-                root.listFailure = Logic.listError(listOut.text, listErr.text, code);
+                root.listFailure = Logic.commandError("gh", listOut.text, listErr.text, code);
             } else {
                 // Keeps the selection on the same pull request.
                 const url = root.focusedPr ? root.focusedPr.url : "";
@@ -263,63 +258,7 @@ ShellRoot {
         }
     }
 
-    // --- CI of the focused pull request -------------------------------------------
-
-    onFocusedUrlChanged: {
-        ciDebounce.restart();
-        previewFlick.contentY = 0;
-    }
-
-    // Moving through the list quickly does not ask gh about every row.
-    Timer {
-        id: ciDebounce
-        interval: 150
-        onTriggered: root.wantCi(root.focusedPr)
-    }
-
-    function setCi(url, entry) {
-        const next = Object.assign({}, root.ciCache);
-        next[url] = entry;
-        root.ciCache = next;
-    }
-
-    function wantCi(pr) {
-        if (!pr)
-            return;
-        const entry = root.ciCache[pr.url];
-        if (entry && (entry.phase === "loading" || Date.now() - entry.at < 30000))
-            return;
-        // Only the newest one wanted waits for the one running.
-        if (ciProc.running) {
-            root.ciWanted = pr;
-            return;
-        }
-        root.ciFetching = pr;
-        root.setCi(pr.url, { phase: "loading", ci: entry ? entry.ci : null, at: Date.now(), error: "" });
-        ciProc.exec(Logic.ciCommand(pr));
-    }
-
-    Process {
-        id: ciProc
-        stdout: StdioCollector {
-            id: ciOut
-        }
-        stderr: StdioCollector {
-            id: ciErr
-        }
-        onExited: code => {
-            const pr = root.ciFetching;
-            root.ciFetching = null;
-            const ci = code === 0 ? Logic.parseCi(ciOut.text) : null;
-            if (ci)
-                root.setCi(pr.url, { phase: "ready", ci: ci, at: Date.now(), error: "" });
-            else
-                root.setCi(pr.url, { phase: "error", ci: null, at: Date.now(), error: Logic.listError(ciOut.text, ciErr.text, code) });
-            const wanted = root.ciWanted;
-            root.ciWanted = null;
-            root.wantCi(wanted);
-        }
-    }
+    onFocusedUrlChanged: previewFlick.contentY = 0
 
     // --- bb projects and threads ----------------------------------------------------
 
@@ -464,7 +403,7 @@ ShellRoot {
             }
             const files = Logic.parseDiff(diffOut.text);
             if (code !== 0 && files.length === 0) {
-                root.setDiff({ phase: "error", error: Logic.listError(diffOut.text, diffErr.text, code) });
+                root.setDiff({ phase: "error", error: Logic.commandError("gh", diffOut.text, diffErr.text, code) });
                 return;
             }
             root.setDiff({ phase: "ready", files: files });
@@ -609,12 +548,7 @@ ShellRoot {
             diff: () => root.showDiff(),
             hide: () => root.toggleHide(),
             hidden: () => root.showHiddenList(),
-            refresh: () => {
-                if (root.focusedPr)
-                    root.setCi(root.focusedPr.url, { phase: "ready", ci: null, at: 0, error: "" });
-                root.refresh();
-                ciDebounce.restart();
-            },
+            refresh: () => root.refresh(),
             close: () => root.close(),
             lineDown: () => root.scrollDiff(60),
             lineUp: () => root.scrollDiff(-60),
@@ -997,8 +931,7 @@ ShellRoot {
                                 width: parent.width
                                 spacing: 3
 
-                                readonly property var entry: root.focusedCi
-                                readonly property var ci: ciBlock.entry ? ciBlock.entry.ci : null
+                                readonly property var ci: root.focusedPr ? root.focusedPr.ci : null
                                 readonly property var look: ciBlock.ci ? Logic.CI_LOOK[ciBlock.ci.state] : null
 
                                 Row {
@@ -1012,7 +945,7 @@ ShellRoot {
                                         color: ciBlock.look ? root.roleColors[ciBlock.look.color] : root.dimColor
                                     }
                                     Text {
-                                        text: ciBlock.look ? ciBlock.look.label : (ciBlock.entry && ciBlock.entry.phase === "error" ? "CI state unavailable" : "checking…")
+                                        text: ciBlock.look ? ciBlock.look.label : ""
                                         color: ciBlock.look ? root.roleColors[ciBlock.look.color] : root.dimColor
                                         font.family: root.monoFont
                                         font.pixelSize: 12
@@ -1031,15 +964,6 @@ ShellRoot {
                                     wrapMode: Text.Wrap
                                     text: ciBlock.ci ? ciBlock.ci.failing.join(", ") : ""
                                     color: root.badColor
-                                    font.family: root.monoFont
-                                    font.pixelSize: 11
-                                }
-                                Text {
-                                    visible: ciBlock.entry !== null && ciBlock.entry.phase === "error"
-                                    width: parent.width
-                                    wrapMode: Text.Wrap
-                                    text: ciBlock.entry ? ciBlock.entry.error : ""
-                                    color: root.dimColor
                                     font.family: root.monoFont
                                     font.pixelSize: 11
                                 }

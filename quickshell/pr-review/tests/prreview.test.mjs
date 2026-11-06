@@ -6,7 +6,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     commandError,
-    listError,
     age,
     parseFocusedOutput,
     parseSearch,
@@ -20,7 +19,6 @@ import {
     previewBody,
     plainLinks,
     summarizeChecks,
-    parseCi,
     CI_LOOK,
     ciDetail,
     parseProjects,
@@ -50,30 +48,42 @@ import {
 
 // --- the list -------------------------------------------------------------------
 
-const SEARCH_JSON = JSON.stringify([
-    {
-        author: { id: "U1", is_bot: false, login: "mona", type: "User", url: "https://github.com/mona" },
-        body: "## Why\n\n<!-- template hint -->\nThe cache never expired.",
-        labels: [{ id: "L1", name: "bug", color: "d73a4a" }, { id: "L2", name: "backend", color: "000000" }],
-        number: 1952,
-        repository: { name: "api", nameWithOwner: "acme/api" },
-        title: "chore(ui): document the dashboard",
-        updatedAt: "2026-11-05T14:09:00Z",
-        url: "https://github.com/acme/api/pull/1952",
-    },
-    {
-        author: { id: "U2", is_bot: true, login: "app/dependabot", type: "Bot", url: "https://github.com/apps/dependabot" },
-        body: "",
-        labels: [],
-        number: 7,
-        repository: { name: "web", nameWithOwner: "acme/web" },
-        title: "Bump left-pad",
-        updatedAt: "2026-11-04T08:00:00Z",
-        url: "https://github.com/acme/web/pull/7",
-    },
-]);
+function check(name, status, conclusion) {
+    return { __typename: "CheckRun", name: name, status: status, conclusion: conclusion };
+}
 
-test("reads gh search prs into pull requests, naming the bot", () => {
+function rollup(contexts) {
+    return { commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: contexts } } } }] } };
+}
+
+// What `gh api graphql --jq '.data.search.nodes[]'` prints: one node a line.
+const NODES = [
+    {
+        url: "https://github.com/acme/api/pull/1952",
+        number: 1952,
+        title: "chore(ui): document the dashboard",
+        body: "## Why\n\n<!-- template hint -->\nThe cache never expired.",
+        updatedAt: "2026-11-05T14:09:00Z",
+        author: { login: "mona", __typename: "User" },
+        repository: { nameWithOwner: "acme/api", name: "api" },
+        labels: { nodes: [{ name: "bug" }, { name: "backend" }] },
+        ...rollup([check("build", "COMPLETED", "SUCCESS"), check("test", "COMPLETED", "FAILURE")]),
+    },
+    {
+        url: "https://github.com/acme/web/pull/7",
+        number: 7,
+        title: "Bump left-pad",
+        body: "",
+        updatedAt: "2026-11-04T08:00:00Z",
+        author: { login: "dependabot", __typename: "Bot" },
+        repository: { nameWithOwner: "acme/web", name: "web" },
+        labels: { nodes: [] },
+        commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
+    },
+];
+const SEARCH_JSON = NODES.map(node => JSON.stringify(node)).join("\n") + "\n";
+
+test("reads the query's pull requests, naming the bot", () => {
     const prs = parsePrs(SEARCH_JSON);
     assert.equal(prs.length, 2);
     assert.deepEqual(prs[0], {
@@ -87,11 +97,38 @@ test("reads gh search prs into pull requests, naming the bot", () => {
         updatedAt: Date.parse("2026-11-05T14:09:00Z"),
         body: "## Why\n\n<!-- template hint -->\nThe cache never expired.",
         labels: ["bug", "backend"],
+        ci: { state: "failure", passed: 1, failed: 1, pending: 0, failing: ["test"] },
     });
     assert.equal(prs[1].bot, true);
-    assert.equal(parsePrs(""), null);
-    assert.equal(parsePrs("{}"), null);
-    assert.deepEqual(parsePrs("[]"), []);
+    assert.equal(prs[1].author, "dependabot");
+});
+
+test("reads an empty answer as an empty queue, and refuses what is not JSON", () => {
+    assert.deepEqual(parsePrs(""), []);
+    assert.deepEqual(parsePrs("\n"), []);
+    assert.equal(parsePrs("HTTP 502: Bad Gateway"), null);
+    assert.equal(parsePrs(JSON.stringify(NODES[0]) + "\n<html>\n"), null);
+});
+
+test("drops nodes that are not pull requests, such as the issues a search can return", () => {
+    assert.deepEqual(parsePrs("{}\n" + JSON.stringify({ title: "x" }) + "\nnull\n"), []);
+    assert.deepEqual(parsePrs("{}\n" + JSON.stringify(NODES[1]) + "\n").map(p => p.number), [7]);
+});
+
+test("keeps a pull request whose author was deleted", () => {
+    const [pr] = parsePrs(JSON.stringify(Object.assign({}, NODES[0], { author: null })));
+    assert.equal(pr.author, "");
+    assert.equal(pr.bot, false);
+});
+
+test("reads the CI of the last commit, none when it has no rollup", () => {
+    const [failing, bare] = parsePrs(SEARCH_JSON);
+    assert.equal(failing.ci.state, "failure");
+    assert.equal(bare.ci.state, "none");
+    const noCommits = Object.assign({}, NODES[1], { commits: { nodes: [] } });
+    assert.equal(parsePrs(JSON.stringify(noCommits))[0].ci.state, "none");
+    const pending = Object.assign({}, NODES[1], rollup([{ __typename: "StatusContext", context: "ci/x", state: "PENDING" }]));
+    assert.equal(parsePrs(JSON.stringify(pending))[0].ci.state, "pending");
 });
 
 // --- the pull requests you will not review ----------------------------------------
@@ -148,10 +185,6 @@ test("hides a pull request that is shown and unhides one that is hidden", () => 
     assert.deepEqual(before, [API]);
 });
 
-test("drops list entries that are not pull requests", () => {
-    assert.deepEqual(parsePrs('[null, {"title": "x"}]'), []);
-});
-
 test("strips HTML comments from the preview body", () => {
     assert.equal(previewBody("<!-- a -->\nHello\n<!--\nmulti\nline\n-->\nworld"), "Hello\n\nworld");
     assert.equal(previewBody("<!-- only -->"), "");
@@ -171,9 +204,9 @@ test("leaves URLs and links inside code alone", () => {
     assert.equal(plainLinks(""), "");
 });
 
-test("says why gh listed nothing", () => {
-    assert.equal(listError("", "To get started with GitHub CLI, please run:  gh auth login\n", 4), "gh: To get started with GitHub CLI, please run:  gh auth login");
-    assert.equal(listError("", "", 1), "gh exited with 1");
+test("says why a command gave nothing", () => {
+    assert.equal(commandError("gh", "", "To get started with GitHub CLI, please run:  gh auth login\n", 4), "gh: To get started with GitHub CLI, please run:  gh auth login");
+    assert.equal(commandError("gh", "", "", 1), "gh exited with 1");
     assert.equal(commandError("bb", '{"error": {"message": "server down"}}', "", 1), "bb: server down");
 });
 
@@ -196,17 +229,22 @@ test("reads the extra qualifiers, dropping comments and blank lines", () => {
     assert.deepEqual(parseSearch(""), []);
 });
 
-test("puts the qualifiers after -- so a leading dash is not a flag", () => {
-    const command = listCommand(["-repo:acme/old"]);
-    assert.deepEqual(command.slice(0, 4), ["gh", "search", "prs", "--review-requested=@me"]);
-    assert.deepEqual(command.slice(-2), ["--", "-repo:acme/old"]);
-    assert.ok(command.indexOf("--json") < command.indexOf("--"));
+// The search text, the value of `-f q=…`.
+function searchOf(command) {
+    return command.find(arg => arg.indexOf("q=") === 0).slice(2);
+}
+
+test("asks GraphQL for the open pull requests waiting on you, the extra qualifiers after them", () => {
+    const command = listCommand(["-repo:acme/old", "-label:wip"]);
+    assert.deepEqual(command.slice(0, 4), ["gh", "api", "graphql", "--paginate"]);
+    assert.ok(command.indexOf("--jq") !== -1);
+    assert.ok(searchOf(command).startsWith("is:pr is:open review-requested:@me"));
+    assert.ok(searchOf(command).endsWith(" -repo:acme/old -label:wip"));
+    assert.equal(searchOf(listCommand([])).indexOf("-repo"), -1);
 });
 
 test("leaves drafts out of the queue", () => {
-    const command = listCommand([]);
-    assert.ok(command.indexOf("--draft=false") !== -1);
-    assert.ok(command.indexOf("--draft=false") < command.indexOf("--"));
+    assert.ok(searchOf(listCommand([])).split(" ").indexOf("draft:false") !== -1);
 });
 
 // --- CI -------------------------------------------------------------------------
@@ -252,13 +290,6 @@ test("passes when every check passed, and has none when there are none", () => {
 
 test("does not call a conclusion it does not know a pass", () => {
     assert.equal(summarizeChecks([run("a", "COMPLETED", "STALE")]).state, "pending");
-});
-
-test("reads gh pr view's rollup, and refuses what is not it", () => {
-    assert.equal(parseCi('{"statusCheckRollup": [{"__typename": "StatusContext", "context": "a", "state": "SUCCESS"}]}').state, "success");
-    assert.equal(parseCi('{"statusCheckRollup": []}').state, "none");
-    assert.equal(parseCi("{}"), null);
-    assert.equal(parseCi(""), null);
 });
 
 test("gives every CI state a label and a palette role", () => {
