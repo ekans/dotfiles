@@ -201,15 +201,12 @@ test("reads the hidden file's URLs, ignoring blank lines and padding", () => {
     assert.deepEqual(parseHidden(null), []);
 });
 
-test("writes one URL per line, only those still in the queue", () => {
+// A draft, or a repo the search file leaves out for a while, drops out of gh's
+// answer and comes back hidden.
+test("writes every hidden URL, one per line, those gh does not list too", () => {
     const prs = parsePrs(SEARCH_JSON);
-    assert.equal(hiddenText([API, GONE, WEB], prs), API + "\n" + WEB + "\n");
-    assert.equal(hiddenText([GONE], prs), "");
-    assert.deepEqual(parseHidden(hiddenText([WEB, API], prs)), [WEB, API]);
-});
-
-test("keeps what was hidden while gh has not answered", () => {
-    assert.equal(hiddenText([API], null), API + "\n");
+    assert.equal(hiddenText([API, GONE, WEB], prs), API + "\n" + GONE + "\n" + WEB + "\n");
+    assert.deepEqual(parseHidden(hiddenText([GONE], prs)), [GONE]);
 });
 
 test("lists the pull requests not hidden, or only the hidden ones", () => {
