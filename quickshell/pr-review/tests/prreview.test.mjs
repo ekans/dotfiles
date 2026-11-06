@@ -548,27 +548,30 @@ test("lists a file row, its hunks and its lines, in unified mode", () => {
     const rows = unifiedRows(parseDiff(DIFF).slice(0, 1), {});
     assert.deepEqual(rows.slice(0, 4).map(r => r.type), ["file", "hunk", "line", "line"]);
     assert.deepEqual(rows[0], { type: "file", path: "src/app.js", oldPath: "src/app.js", status: "modified", adds: 4, dels: 3 });
-    assert.deepEqual(rows[3], { type: "line", kind: "del", oldNo: 2, newNo: null, html: "const&nbsp;b&nbsp;=&nbsp;2;" });
+    assert.deepEqual(rows[2].cells, [{ kind: "context", nos: [1, 1], sign: "", html: "const&nbsp;a&nbsp;=&nbsp;1;" }]);
+    assert.deepEqual(rows[3].cells, [{ kind: "del", nos: [2, null], sign: "-", html: "const&nbsp;b&nbsp;=&nbsp;2;" }]);
+    assert.deepEqual(rows[5].cells.map(c => [c.kind, c.nos, c.sign]), [["add", [null, 2], "+"]]);
 });
 
 test("zips a run of deleted lines with the added ones that follow, in split mode", () => {
     const rows = splitRows(parseDiff(DIFF).slice(0, 1), {});
-    assert.deepEqual(rows.slice(0, 7).map(r => r.type), ["file", "hunk", "pair", "pair", "pair", "pair", "pair"]);
+    assert.deepEqual(rows.slice(0, 7).map(r => r.type), ["file", "hunk", "line", "line", "line", "line", "line"]);
+    const sides = row => row.cells.map(c => c && [c.kind, c.nos]);
     // Context on both sides.
-    assert.deepEqual([rows[2].left.kind, rows[2].left.no, rows[2].right.kind, rows[2].right.no], ["context", 1, "context", 1]);
+    assert.deepEqual(sides(rows[2]), [["context", [1]], ["context", [1]]]);
+    assert.deepEqual(sides(rows[3]), [["del", [2]], ["add", [2]]]);
+    assert.deepEqual(sides(rows[4]), [["del", [3]], ["add", [3]]]);
     // Two deletions against three additions: the last has no left side.
-    assert.deepEqual([rows[3].left.no, rows[3].right.no], [2, 2]);
-    assert.deepEqual([rows[4].left.no, rows[4].right.no], [3, 3]);
-    assert.equal(rows[5].left, null);
-    assert.deepEqual([rows[5].right.kind, rows[5].right.no], ["add", 4]);
+    assert.deepEqual(sides(rows[5]), [null, ["add", [4]]]);
+    assert.ok(rows.every(r => r.type !== "line" || r.cells.every(c => c === null || c.sign === "")));
 });
 
 test("leaves the right side empty for a deletion with nothing to pair, and the left for an addition", () => {
     const files = parseDiff(DIFF);
     const gone = splitRows([files[3]], {});
-    assert.deepEqual(gone.slice(2).map(r => [r.left.kind, r.right]), [["del", null], ["del", null]]);
+    assert.deepEqual(gone.slice(2).map(r => [r.cells[0].kind, r.cells[1]]), [["del", null], ["del", null]]);
     const added = splitRows([files[2]], {});
-    assert.deepEqual(added.slice(2).map(r => [r.left, r.right.kind, r.right.no]), [[null, "add", 1], [null, "add", 2]]);
+    assert.deepEqual(added.slice(2).map(r => [r.cells[0], r.cells[1].kind, r.cells[1].nos]), [[null, "add", [1]], [null, "add", [2]]]);
 });
 
 test("shows a file with no lines as a file row alone", () => {
@@ -580,10 +583,10 @@ test("uses the highlighted line where there is one and escaped text where there 
     const files = parseDiff(DIFF).slice(2, 3);
     const styled = { "lib/new.py": [null, "<font color=\"#c678dd\">def</font>", null] };
     const rows = unifiedRows(files, styled);
-    assert.equal(rows[2].html, "<font color=\"#c678dd\">def</font>");
-    assert.equal(rows[3].html, "&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;1");
+    assert.equal(rows[2].cells[0].html, "<font color=\"#c678dd\">def</font>");
+    assert.equal(rows[3].cells[0].html, "&nbsp;&nbsp;&nbsp;&nbsp;return&nbsp;1");
     const split = splitRows(files, styled);
-    assert.equal(split[2].right.html, "<font color=\"#c678dd\">def</font>");
+    assert.equal(split[2].cells[1].html, "<font color=\"#c678dd\">def</font>");
 });
 
 test("lists where each file starts, and which file a row is in", () => {

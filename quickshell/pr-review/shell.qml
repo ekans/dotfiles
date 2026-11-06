@@ -1012,7 +1012,6 @@ ShellRoot {
                             required property int index
 
                             readonly property string type: line.modelData.type
-                            readonly property int half: Math.floor(line.width / 2)
                             // Wide enough for a five-digit line number.
                             readonly property int gutter: 52
 
@@ -1081,96 +1080,72 @@ ShellRoot {
                                 }
                             }
 
-                            // A line, unified: two numbers, a sign, the code.
-                            Rectangle {
-                                visible: line.type === "line"
-                                anchors.fill: parent
-                                color: line.type !== "line" ? "transparent" : (line.modelData.kind === "add" ? root.addColor : (line.modelData.kind === "del" ? root.delColor : "transparent"))
-                                clip: true
-
-                                Mono {
-                                    x: 0
-                                    width: line.gutter - 8
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    horizontalAlignment: Text.AlignRight
-                                    text: line.type === "line" ? (line.modelData.oldNo ?? "") : ""
-                                    color: root.dimColor
-                                    font.pixelSize: 12
-                                }
-                                Mono {
-                                    x: line.gutter
-                                    width: line.gutter - 8
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    horizontalAlignment: Text.AlignRight
-                                    text: line.type === "line" ? (line.modelData.newNo ?? "") : ""
-                                    color: root.dimColor
-                                    font.pixelSize: 12
-                                }
-                                Mono {
-                                    x: line.gutter * 2
-                                    width: 18
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: line.type !== "line" ? "" : (line.modelData.kind === "add" ? "+" : (line.modelData.kind === "del" ? "-" : ""))
-                                    color: line.type === "line" && line.modelData.kind === "add" ? root.goodColor : root.badColor
-                                    font.pixelSize: 12
-                                }
-                                Mono {
-                                    x: line.gutter * 2 + 18
-                                    width: parent.width - x
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    textFormat: Text.StyledText
-                                    wrapMode: Text.NoWrap
-                                    clip: true
-                                    text: line.type === "line" ? line.modelData.html : ""
-                                    color: root.fgColor
-                                    font.pixelSize: 12
-                                }
-                            }
-
-                            // A pair, split: each half has its own number.
+                            // A line: one cell in unified mode, two in split mode,
+                            // each its numbers, a sign, the code.
                             Row {
-                                visible: line.type === "pair"
+                                visible: line.type === "line"
                                 anchors.fill: parent
 
                                 Repeater {
-                                    model: line.type === "pair" ? [line.modelData.left, line.modelData.right] : []
+                                    model: line.type === "line" ? line.modelData.cells : []
 
                                     delegate: Rectangle {
-                                        id: side
+                                        id: cell
                                         required property var modelData
                                         required property int index
 
-                                        width: side.index === 0 ? line.half : line.width - line.half
+                                        readonly property int count: line.modelData.cells.length
+                                        readonly property int share: Math.floor(line.width / cell.count)
+                                        readonly property int numbers: cell.modelData ? cell.modelData.nos.length : 0
+                                        // Only a unified line has a sign column.
+                                        readonly property int signWidth: cell.count === 1 ? 18 : 0
+
+                                        width: cell.index === cell.count - 1 ? line.width - cell.share * cell.index : cell.share
                                         height: line.height
                                         clip: true
-                                        color: side.modelData === null ? Qt.rgba(0, 0, 0, 0.2)
-                                            : (side.modelData.kind === "add" ? root.addColor : (side.modelData.kind === "del" ? root.delColor : "transparent"))
+                                        color: cell.modelData === null ? Qt.rgba(0, 0, 0, 0.2)
+                                            : (cell.modelData.kind === "add" ? root.addColor : (cell.modelData.kind === "del" ? root.delColor : "transparent"))
 
                                         // The line between the halves.
                                         Rectangle {
-                                            visible: side.index === 1
+                                            visible: cell.index === 1
                                             width: 1
                                             height: parent.height
                                             color: root.lineColor
                                         }
+                                        Repeater {
+                                            model: cell.modelData ? cell.modelData.nos : []
+
+                                            delegate: Mono {
+                                                required property var modelData
+                                                required property int index
+
+                                                x: index * line.gutter
+                                                width: line.gutter - 8
+                                                anchors.verticalCenter: cell.verticalCenter
+                                                horizontalAlignment: Text.AlignRight
+                                                text: modelData ?? ""
+                                                color: root.dimColor
+                                                font.pixelSize: 12
+                                            }
+                                        }
                                         Mono {
-                                            x: 0
-                                            width: line.gutter - 8
+                                            x: cell.numbers * line.gutter
+                                            width: cell.signWidth
                                             anchors.verticalCenter: parent.verticalCenter
-                                            horizontalAlignment: Text.AlignRight
-                                            text: side.modelData ? (side.modelData.no ?? "") : ""
-                                            color: root.dimColor
+                                            horizontalAlignment: Text.AlignHCenter
+                                            text: cell.modelData ? cell.modelData.sign : ""
+                                            color: cell.modelData && cell.modelData.kind === "add" ? root.goodColor : root.badColor
                                             font.pixelSize: 12
                                         }
                                         Mono {
-                                            x: line.gutter
+                                            x: cell.numbers * line.gutter + cell.signWidth
                                             width: parent.width - x
                                             anchors.verticalCenter: parent.verticalCenter
                                             textFormat: Text.StyledText
                                             wrapMode: Text.NoWrap
                                             clip: true
-                                            text: side.modelData ? side.modelData.html : ""
+                                            text: cell.modelData ? cell.modelData.html : ""
                                             color: root.fgColor
                                             font.pixelSize: 12
                                         }

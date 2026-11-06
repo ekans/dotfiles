@@ -644,8 +644,18 @@ function fileRow(file) {
     return { type: "file", path: file.path, oldPath: file.oldPath, status: file.status, adds: s.adds, dels: s.dels };
 }
 
-// File rows, hunk rows and one line row per diff line, with its two numbers,
-// kind and StyledText. `styled` maps a path to applyHighlight's answer.
+// A line row is {type: "line", cells: [cell, …]}, a cell {kind, nos: [number,
+// …], sign, html} or null for a side with nothing on it: one cell, with both
+// numbers and a +/- sign, in unified mode; a left and a right cell, each with
+// its own number, in split mode.
+function cell(kind, nos, sign, html) {
+    return { kind: kind, nos: nos, sign: sign, html: html };
+}
+
+const SIGNS = { add: "+", del: "-", context: "" };
+
+// File rows, hunk rows and one line row per diff line. `styled` maps a path to
+// applyHighlight's answer.
 export function unifiedRows(files, styled) {
     const rows = [];
     for (const file of files) {
@@ -655,15 +665,14 @@ export function unifiedRows(files, styled) {
             if (l.kind === "hunk")
                 rows.push({ type: "hunk", text: l.text });
             else
-                rows.push({ type: "line", kind: l.kind, oldNo: l.oldNo, newNo: l.newNo, html: htmlAt(styled, file, i) });
+                rows.push({ type: "line", cells: [cell(l.kind, [l.oldNo, l.newNo], SIGNS[l.kind], htmlAt(styled, file, i))] });
         }
     }
     return rows;
 }
 
 // The same, side by side: a run of deleted lines followed by a run of added
-// ones is zipped into pairs, context shows on both sides. A pair is
-// {type: "pair", left, right}, each side {kind, no, html} or null.
+// ones is zipped into pairs, context shows on both sides.
 export function splitRows(files, styled) {
     const rows = [];
     for (const file of files) {
@@ -677,7 +686,7 @@ export function splitRows(files, styled) {
                 i++;
             } else if (l.kind === "context") {
                 const html = htmlAt(styled, file, i);
-                rows.push({ type: "pair", left: { kind: "context", no: l.oldNo, html: html }, right: { kind: "context", no: l.newNo, html: html } });
+                rows.push({ type: "line", cells: [cell("context", [l.oldNo], "", html), cell("context", [l.newNo], "", html)] });
                 i++;
             } else {
                 const dels = [];
@@ -687,12 +696,14 @@ export function splitRows(files, styled) {
                 while (i < lines.length && lines[i].kind === "add")
                     adds.push(i++);
                 for (let k = 0; k < Math.max(dels.length, adds.length); k++) {
-                    const d = k < dels.length ? dels[k] : -1;
-                    const a = k < adds.length ? adds[k] : -1;
+                    const d = dels[k];
+                    const a = adds[k];
                     rows.push({
-                        type: "pair",
-                        left: d === -1 ? null : { kind: "del", no: lines[d].oldNo, html: htmlAt(styled, file, d) },
-                        right: a === -1 ? null : { kind: "add", no: lines[a].newNo, html: htmlAt(styled, file, a) },
+                        type: "line",
+                        cells: [
+                            d === undefined ? null : cell("del", [lines[d].oldNo], "", htmlAt(styled, file, d)),
+                            a === undefined ? null : cell("add", [lines[a].newNo], "", htmlAt(styled, file, a)),
+                        ],
                     });
                 }
             }
