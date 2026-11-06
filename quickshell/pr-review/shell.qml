@@ -78,8 +78,11 @@ ShellRoot {
     property bool listing: false
     property bool listAgain: false
     property string listFailure: ""
-    property int index: 0
-    readonly property var focusedPr: root.shown && root.shown.length > 0 ? (root.shown[root.index] ?? null) : null
+    // The selection is a pull request, not a row. A refresh that puts another
+    // one above it must not select another, even between two assignments.
+    property string selectedUrl: ""
+    readonly property int index: root.shown ? root.shown.findIndex(p => p.url === root.selectedUrl) : -1
+    readonly property var focusedPr: root.index >= 0 ? root.shown[root.index] : null
     // A string notifies only when it differs, and every list refresh makes a new focusedPr object.
     readonly property string focusedUrl: root.focusedPr ? root.focusedPr.url : ""
 
@@ -207,7 +210,7 @@ ShellRoot {
         root.notice = "";
         root.now = Date.now();
         root.view = "list";
-        root.index = 0;
+        root.select("", 0);
         root.open = true;
     }
 
@@ -274,11 +277,10 @@ ShellRoot {
             if (prs === null) {
                 root.listFailure = Logic.commandError("gh", out, err, code);
             } else {
-                // Keeps the selection on the same pull request.
-                const url = root.focusedPr ? root.focusedPr.url : "";
+                const at = root.index;
                 root.prs = prs;
                 root.listFailure = "";
-                root.index = root.indexOfShown(url);
+                root.select(root.selectedUrl, at);
             }
             root.now = Date.now();
             if (root.listAgain) {
@@ -446,11 +448,10 @@ ShellRoot {
 
     // --- keys -------------------------------------------------------------------
 
-    // Where `url` is in the list, else the current place kept inside it.
-    function indexOfShown(url) {
+    // Selects the pull request at `url`, else the one in row `at`, kept inside the list.
+    function select(url, at) {
         const shown = root.shown ?? [];
-        const at = shown.findIndex(p => p.url === url);
-        return at >= 0 ? at : Math.max(0, Math.min(root.index, shown.length - 1));
+        root.selectedUrl = shown.length === 0 || shown.some(p => p.url === url) ? url : shown[Math.max(0, Math.min(at, shown.length - 1))].url;
     }
 
     function toggleHide() {
@@ -458,17 +459,18 @@ ShellRoot {
         // Until the file is read, a write would drop what is in it.
         if (!pr || !root.hiddenReady)
             return;
+        const at = root.index;
         root.hidden = Logic.toggleHidden(root.hidden, pr.url);
         hiddenFile.setText(Logic.hiddenText(root.hidden));
-        root.index = root.indexOfShown("");
+        root.select("", at);
         if (root.view === "hidden" && root.shown.length === 0)
             root.back();
     }
 
     function showHiddenList() {
-        root.queueUrl = root.focusedPr ? root.focusedPr.url : "";
+        root.queueUrl = root.focusedUrl;
         root.view = "hidden";
-        root.index = 0;
+        root.select("", 0);
         prList.positionViewAtIndex(0, ListView.Beginning);
     }
 
@@ -477,7 +479,7 @@ ShellRoot {
         root.view = "list";
         root.error = "";
         if (fromHidden) {
-            root.index = root.indexOfShown(root.queueUrl);
+            root.select(root.queueUrl, 0);
             prList.positionViewAtIndex(root.index, ListView.Contain);
         }
     }
@@ -486,7 +488,7 @@ ShellRoot {
         const count = root.shown ? root.shown.length : 0;
         if (count === 0)
             return;
-        root.index = (root.index + step + count) % count;
+        root.selectedUrl = root.shown[(root.index + step + count) % count].url;
         prList.positionViewAtIndex(root.index, ListView.Contain);
     }
 
@@ -845,7 +847,7 @@ ShellRoot {
 
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: root.index = row.index
+                                    onClicked: root.selectedUrl = row.modelData.url
                                 }
                             }
                         }
