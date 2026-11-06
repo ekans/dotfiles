@@ -116,10 +116,40 @@ ShellRoot {
     property bool spawning: false
     property string spawnTitle: ""
     property string spawnProject: ""
-    property string spawnPrompt: ""
 
     readonly property var activePr: root.view === "diff" && root.diff ? root.diff.pr : root.focusedPr
     readonly property var diffStats: root.diff && root.diff.phase === "ready" ? Logic.diffStats(root.diff.files) : null
+
+    // A process that collects its output and says it is done with it. Giving
+    // run() an input opens stdin, writes it and closes it again: the process
+    // reads to the end of its input before it goes on.
+    component Command: Process {
+        id: cmd
+
+        property var input: null
+        signal done(int code, string out, string err)
+
+        function run(argv, input) {
+            cmd.input = input ?? null;
+            cmd.command = argv;
+            cmd.stdinEnabled = cmd.input !== null;
+            cmd.running = true;
+        }
+
+        stdout: StdioCollector {
+            id: out
+        }
+        stderr: StdioCollector {
+            id: err
+        }
+        onStarted: {
+            if (cmd.input === null)
+                return;
+            cmd.write(cmd.input);
+            cmd.stdinEnabled = false;
+        }
+        onExited: code => cmd.done(code, out.text, err.text)
+    }
 
     // --- opening ----------------------------------------------------------------
 
@@ -155,7 +185,7 @@ ShellRoot {
     }
 
     function summon() {
-        probe.running = true;
+        probe.run(["niri", "msg", "--json", "focused-output"]);
         root.refresh();
         root.refreshProjects();
     }
@@ -175,13 +205,9 @@ ShellRoot {
         root.open = false;
     }
 
-    Process {
+    Command {
         id: probe
-        command: ["niri", "msg", "--json", "focused-output"]
-        stdout: StdioCollector {
-            id: probeOut
-            onStreamFinished: root.present(Logic.parseFocusedOutput(probeOut.text))
-        }
+        onDone: (code, out, err) => root.present(Logic.parseFocusedOutput(out))
     }
 
     // --- the queue --------------------------------------------------------------
@@ -227,22 +253,16 @@ ShellRoot {
             return;
         }
         root.listing = true;
-        lister.exec(Logic.listCommand(root.qualifiers));
+        lister.run(Logic.listCommand(root.qualifiers));
     }
 
-    Process {
+    Command {
         id: lister
-        stdout: StdioCollector {
-            id: listOut
-        }
-        stderr: StdioCollector {
-            id: listErr
-        }
-        onExited: code => {
+        onDone: (code, out, err) => {
             root.listing = false;
-            const prs = code === 0 ? Logic.parsePrs(listOut.text) : null;
+            const prs = code === 0 ? Logic.parsePrs(out) : null;
             if (prs === null) {
-                root.listFailure = Logic.commandError("gh", listOut.text, listErr.text, code);
+                root.listFailure = Logic.commandError("gh", out, err, code);
             } else {
                 // Keeps the selection on the same pull request.
                 const url = root.focusedPr ? root.focusedPr.url : "";
@@ -264,21 +284,15 @@ ShellRoot {
 
     function refreshProjects() {
         if (!projectLister.running)
-            projectLister.exec(Logic.projectsCommand(root.bb));
+            projectLister.run(Logic.projectsCommand(root.bb));
     }
 
-    Process {
+    Command {
         id: projectLister
-        stdout: StdioCollector {
-            id: projectsOut
-        }
-        stderr: StdioCollector {
-            id: projectsErr
-        }
-        onExited: code => {
-            const projects = code === 0 ? Logic.parseProjects(projectsOut.text) : null;
+        onDone: (code, out, err) => {
+            const projects = code === 0 ? Logic.parseProjects(out) : null;
             if (projects === null) {
-                root.projectsFailure = Logic.commandError("bb", projectsOut.text, projectsErr.text, code);
+                root.projectsFailure = Logic.commandError("bb", out, err, code);
             } else {
                 root.projects = projects;
                 root.projectsFailure = "";
@@ -304,29 +318,14 @@ ShellRoot {
         root.spawning = true;
         root.spawnTitle = Logic.threadTitle(pr);
         root.spawnProject = project.name;
-        root.spawnPrompt = Logic.threadPrompt(pr);
-        spawner.command = Logic.spawnCommand(root.bb, project.id, pr);
-        spawner.stdinEnabled = true;
-        spawner.running = true;
+        spawner.run(Logic.spawnCommand(root.bb, project.id, pr), Logic.threadPrompt(pr));
     }
 
-    Process {
+    Command {
         id: spawner
-        stdinEnabled: false
-        stdout: StdioCollector {
-            id: spawnOut
-        }
-        stderr: StdioCollector {
-            id: spawnErr
-        }
-        // bb reads the prompt to the end of stdin: closing it lets it go on.
-        onStarted: {
-            spawner.write(root.spawnPrompt);
-            spawner.stdinEnabled = false;
-        }
-        onExited: code => {
+        onDone: (code, out, err) => {
             root.spawning = false;
-            const answer = Logic.parseSpawn(spawnOut.text, spawnErr.text, code);
+            const answer = Logic.parseSpawn(out, err, code);
             if (answer.error)
                 root.error = answer.error;
             else
@@ -380,18 +379,12 @@ ShellRoot {
         if (diffProc.running)
             return;
         root.diffFetching = pr;
-        diffProc.exec(Logic.diffCommand(pr));
+        diffProc.run(Logic.diffCommand(pr));
     }
 
-    Process {
+    Command {
         id: diffProc
-        stdout: StdioCollector {
-            id: diffOut
-        }
-        stderr: StdioCollector {
-            id: diffErr
-        }
-        onExited: code => {
+        onDone: (code, out, err) => {
             const fetched = root.diffFetching;
             root.diffFetching = null;
             const d = root.diff;
@@ -401,9 +394,9 @@ ShellRoot {
                 root.fetchDiff(d.pr);
                 return;
             }
-            const files = Logic.parseDiff(diffOut.text);
+            const files = Logic.parseDiff(out);
             if (code !== 0 && files.length === 0) {
-                root.setDiff({ phase: "error", error: Logic.commandError("gh", diffOut.text, diffErr.text, code) });
+                root.setDiff({ phase: "error", error: Logic.commandError("gh", out, err, code) });
                 return;
             }
             root.setDiff({ phase: "ready", files: files });
@@ -421,27 +414,16 @@ ShellRoot {
         const file = d.files[root.hlQueue[0]];
         root.hlQueue = root.hlQueue.slice(1);
         root.hlJob = { url: d.url, file: file };
-        hlProc.command = Logic.highlightCommand(file.path);
-        hlProc.stdinEnabled = true;
-        hlProc.running = true;
+        hlProc.run(Logic.highlightCommand(file.path), Logic.highlightInput(file));
     }
 
-    Process {
+    Command {
         id: hlProc
-        stdinEnabled: false
         environment: Logic.HIGHLIGHT_ENV
-        stdout: StdioCollector {
-            id: hlOut
-        }
-        // bat reads to the end of its input: closing stdin lets it finish.
-        onStarted: {
-            hlProc.write(Logic.highlightInput(root.hlJob.file));
-            hlProc.stdinEnabled = false;
-        }
-        onExited: code => {
+        onDone: (code, out, err) => {
             const job = root.hlJob;
             const d = root.diff;
-            const html = code === 0 && d && d.url === job.url ? Logic.applyHighlight(job.file, hlOut.text) : null;
+            const html = code === 0 && d && d.url === job.url ? Logic.applyHighlight(job.file, out) : null;
             if (html) {
                 const styled = Object.assign({}, d.styled);
                 styled[job.file.path] = html;
