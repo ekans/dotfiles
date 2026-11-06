@@ -88,6 +88,8 @@ ShellRoot {
     property string listFailure: ""
     property int index: 0
     readonly property var focusedPr: root.shown && root.shown.length > 0 ? (root.shown[root.index] ?? null) : null
+    // A string notifies only when it differs, and every list refresh makes a new focusedPr object.
+    readonly property string focusedUrl: root.focusedPr ? root.focusedPr.url : ""
 
     // The extra `gh search` qualifiers, once their file has been read or found
     // missing: asking gh sooner would not leave the excluded repos out.
@@ -119,6 +121,7 @@ ShellRoot {
     property bool spawning: false
     property string spawnTitle: ""
     property string spawnProject: ""
+    property string spawnPrompt: ""
 
     readonly property var activePr: root.view === "diff" && root.diff ? root.diff.pr : root.focusedPr
     readonly property var diffStats: root.diff && root.diff.phase === "ready" ? Logic.diffStats(root.diff.files) : null
@@ -262,7 +265,7 @@ ShellRoot {
 
     // --- CI of the focused pull request -------------------------------------------
 
-    onFocusedPrChanged: {
+    onFocusedUrlChanged: {
         ciDebounce.restart();
         previewFlick.contentY = 0;
     }
@@ -362,16 +365,25 @@ ShellRoot {
         root.spawning = true;
         root.spawnTitle = Logic.threadTitle(pr);
         root.spawnProject = project.name;
-        spawner.exec(Logic.spawnCommand(root.bb, project.id, pr));
+        root.spawnPrompt = Logic.threadPrompt(pr);
+        spawner.command = Logic.spawnCommand(root.bb, project.id, pr);
+        spawner.stdinEnabled = true;
+        spawner.running = true;
     }
 
     Process {
         id: spawner
+        stdinEnabled: false
         stdout: StdioCollector {
             id: spawnOut
         }
         stderr: StdioCollector {
             id: spawnErr
+        }
+        // bb reads the prompt to the end of stdin: closing it lets it go on.
+        onStarted: {
+            spawner.write(root.spawnPrompt);
+            spawner.stdinEnabled = false;
         }
         onExited: code => {
             root.spawning = false;

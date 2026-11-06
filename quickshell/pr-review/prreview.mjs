@@ -304,12 +304,13 @@ export function threadPrompt(pr) {
         + "Reply with the pull request's title as a level-one Markdown heading, then its description exactly as given inside <pr_description>, unchanged. Work from the text above alone, without tools, add no summary or commentary of your own, then stop and wait for the user.";
 }
 
-// `bb thread spawn` for the pull request. `--prompt=` keeps a prompt that
-// starts with a dash from reading as an option.
+// `bb thread spawn` for the pull request. The caller writes threadPrompt(pr) to
+// its stdin: Linux refuses one argument over 128 KiB, and a description of
+// GitHub's 65536 characters can take more than that in UTF-8.
 export function spawnCommand(bb, projectId, pr) {
     return [bb, "thread", "spawn", "--json", "--provider", PROVIDER, "--model", "haiku",
         "--reasoning-level", "low", "--project", projectId, "--new-environment", "worktree",
-        "--title", threadTitle(pr), "--prompt=" + threadPrompt(pr)];
+        "--title", threadTitle(pr), "--prompt-file", "-"];
 }
 
 // What `bb thread spawn --json` answered: {id, error}, one of them empty.
@@ -333,15 +334,66 @@ export function diffCommand(pr) {
     return ["gh", "pr", "diff", String(pr.number), "-R", pr.repo, "--color=never"];
 }
 
-function unquote(path) {
-    const p = path.replace(/\t.*$/, "");
-    return p.length > 1 && p[0] === "\"" && p[p.length - 1] === "\"" ? p.slice(1, -1) : p;
+const QUOTED_ESCAPE = { "\\": "%5C", "\"": "%22", a: "%07", b: "%08", f: "%0C", n: "%0A", r: "%0D", t: "%09", v: "%0B" };
+
+// Git quotes a path holding a control character, a quote, a backslash or (by
+// default) a non-ASCII byte as "...", with C escapes and \ooo octal bytes that
+// together spell UTF-8. QJSEngine has no TextDecoder, so the bytes go through
+// percent-encoding; bytes that are not UTF-8 read as Latin-1 instead.
+function decodeQuoted(inner) {
+    const encoded = inner.replace(/\\([0-7]{3})|\\([\\"abfnrtv])|[^\\]+|\\/g, (m, octal, simple) => {
+        if (octal !== undefined)
+            return "%" + ("0" + (parseInt(octal, 8) & 255).toString(16)).slice(-2);
+        if (simple !== undefined)
+            return QUOTED_ESCAPE[simple];
+        return m === "\\" ? "%5C" : encodeURIComponent(m);
+    });
+    try {
+        return decodeURIComponent(encoded);
+    } catch (e) {
+        return encoded.replace(/%([0-9A-Fa-f]{2})/g, (m, hex) => String.fromCharCode(parseInt(hex, 16)));
+    }
 }
 
-// The paths on a `diff --git a/x b/y` line. Without a rename both halves are
+// Where the quote opening at `start` closes, or -1.
+function quoteEnd(text, start) {
+    for (let i = start + 1; i < text.length; i++) {
+        if (text[i] === "\\")
+            i++;
+        else if (text[i] === "\"")
+            return i;
+    }
+    return -1;
+}
+
+function unquote(path) {
+    if (path[0] === "\"") {
+        const end = quoteEnd(path, 0);
+        if (end !== -1)
+            return decodeQuoted(path.slice(1, end));
+    }
+    return path.replace(/\t.*$/, "");
+}
+
+// The paths on a `diff --git a/x b/y` line. Either half may be quoted on its
+// own, with its a/ or b/ inside the quotes. Without a rename both halves are
 // equal, which tells where a path with spaces in it splits; a rename names its
 // paths again on its own lines.
 function headerPath(rest) {
+    let second = null;
+    if (rest[0] === "\"") {
+        const end = quoteEnd(rest, 0);
+        if (end !== -1)
+            second = rest.slice(end + 2);
+    } else if (rest[rest.length - 1] === "\"") {
+        const cut = rest.indexOf(" \"b/");
+        if (cut !== -1)
+            second = rest.slice(cut + 1);
+    }
+    if (second !== null) {
+        const path = unquote(second);
+        return path.indexOf("b/") === 0 ? path.slice(2) : path;
+    }
     if (rest.indexOf("a/") === 0) {
         const half = (rest.length - 5) / 2;
         if (Number.isInteger(half) && rest.slice(2, 2 + half) === rest.slice(2 + half + 3))
@@ -353,7 +405,7 @@ function headerPath(rest) {
 
 function newFile(header) {
     const rest = header.slice("diff --git ".length);
-    const path = unquote(headerPath(rest));
+    const path = headerPath(rest);
     return { path: path, oldPath: path, status: "modified", lines: [] };
 }
 
