@@ -459,7 +459,7 @@ ShellRoot {
         if (!pr || !root.hiddenReady)
             return;
         root.hidden = Logic.toggleHidden(root.hidden, pr.url);
-        hiddenFile.setText(Logic.hiddenText(root.hidden, root.prs));
+        hiddenFile.setText(Logic.hiddenText(root.hidden));
         root.index = root.indexOfShown("");
         if (root.view === "hidden" && root.shown.length === 0)
             root.back();

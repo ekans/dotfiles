@@ -70,16 +70,10 @@ export function parseHidden(text) {
     return String(text || "").split("\n").map(line => line.trim()).filter(line => line !== "");
 }
 
-// The file's text for `hidden`, only the URLs still in `prs` (the whole list
-// gh gave, not what the list shows) so the file does not outgrow the queue.
-// A list gh has not answered yet is no reason to forget what was hidden.
-export function hiddenText(hidden, prs) {
-    if (prs === null)
-        return hidden.map(url => url + "\n").join("");
-    const listed = {};
-    for (const pr of prs)
-        listed[pr.url] = true;
-    return hidden.filter(url => listed[url] === true).map(url => url + "\n").join("");
+// Every URL, those gh's last answer leaves out too. A draft, or a repo the
+// search file leaves out for a while, drops out of the answer and comes back.
+export function hiddenText(hidden) {
+    return hidden.map(url => url + "\n").join("");
 }
 
 // The pull requests a list shows: the queue's are those not hidden, the
