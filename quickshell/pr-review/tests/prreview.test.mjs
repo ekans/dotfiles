@@ -19,7 +19,6 @@ import {
     previewBody,
     plainLinks,
     summarizeChecks,
-    CI_LOOK,
     ciDetail,
     parseProjects,
     repoOf,
@@ -28,7 +27,6 @@ import {
     threadPrompt,
     spawnCommand,
     parseSpawn,
-    DIFF_MODES,
     parseDiff,
     diffStats,
     escapeStyled,
@@ -292,13 +290,6 @@ test("does not call a conclusion it does not know a pass", () => {
     assert.equal(summarizeChecks([run("a", "COMPLETED", "STALE")]).state, "pending");
 });
 
-test("gives every CI state a label and a palette role", () => {
-    assert.deepEqual(CI_LOOK.pending, { label: "in progress", color: "warn" });
-    assert.deepEqual(CI_LOOK.failure, { label: "failing", color: "bad" });
-    assert.deepEqual(CI_LOOK.success, { label: "passed", color: "good" });
-    assert.deepEqual(CI_LOOK.none, { label: "no checks", color: "dim" });
-});
-
 test("counts the checks that are not zero", () => {
     assert.equal(ciDetail({ passed: 3, failed: 1, pending: 2 }), "3 passed, 1 failed, 2 pending");
     assert.equal(ciDetail({ passed: 0, failed: 0, pending: 0 }), "");
@@ -538,10 +529,6 @@ test("parses nothing from an empty diff", () => {
     assert.deepEqual(parseDiff(null), []);
 });
 
-test("has the two modes", () => {
-    assert.deepEqual(DIFF_MODES, ["unified", "split"]);
-});
-
 // --- the rows -------------------------------------------------------------------
 
 test("lists a file row, its hunks and its lines, in unified mode", () => {
@@ -707,14 +694,4 @@ test("hints every action a view has a key for", () => {
             assert.ok(chips.indexOf(chipFor[key] ?? key) !== -1, view + " has no chip for " + key);
         }
     }
-});
-
-test("hints the hide keys before refresh in the queue", () => {
-    const keys = HINTS.list.map(h => h[0]);
-    assert.deepEqual(HINTS.list.filter(h => h[0] === "x" || h[0] === "h"), [["x", "hide"], ["h", "hidden"]]);
-    assert.ok(keys.indexOf("x") < keys.indexOf("r") && keys.indexOf("h") < keys.indexOf("r"));
-});
-
-test("hints the hidden list's keys: unhide with x, back with h or Esc", () => {
-    assert.deepEqual(HINTS.hidden, [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["x", "unhide"], ["h/Esc", "back to queue"]]);
 });

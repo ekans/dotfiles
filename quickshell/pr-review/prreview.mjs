@@ -757,20 +757,17 @@ export function keyName(key, text, ctrl) {
     return String(text || "");
 }
 
+// The keys of the two lists: selecting, scrolling the preview, opening.
+const NAV = {
+    down: "next", j: "next", "ctrl+j": "next", "ctrl+n": "next",
+    up: "prev", k: "prev", "ctrl+k": "prev", "ctrl+p": "prev",
+    pageDown: "previewDown", pageUp: "previewUp", return: "open",
+};
+
 // What each key does in each view.
 export const KEYS = {
-    list: {
-        down: "next", j: "next", "ctrl+j": "next", "ctrl+n": "next",
-        up: "prev", k: "prev", "ctrl+k": "prev", "ctrl+p": "prev",
-        pageDown: "previewDown", pageUp: "previewUp",
-        return: "open", t: "thread", d: "diff", x: "hide", h: "hidden", r: "refresh", escape: "close",
-    },
-    hidden: {
-        down: "next", j: "next", "ctrl+j": "next", "ctrl+n": "next",
-        up: "prev", k: "prev", "ctrl+k": "prev", "ctrl+p": "prev",
-        pageDown: "previewDown", pageUp: "previewUp",
-        return: "open", x: "hide", h: "back", escape: "back",
-    },
+    list: Object.assign({}, NAV, { t: "thread", d: "diff", x: "hide", h: "hidden", r: "refresh", escape: "close" }),
+    hidden: Object.assign({}, NAV, { x: "hide", h: "back", escape: "back" }),
     diff: {
         down: "lineDown", j: "lineDown", up: "lineUp", k: "lineUp",
         pageDown: "pageDown", pageUp: "pageUp",
@@ -784,9 +781,11 @@ export function actionFor(view, name) {
     return table && Object.prototype.hasOwnProperty.call(table, name) ? table[name] : "";
 }
 
+const SELECT_CHIPS = [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"]];
+
 // The chips at the bottom, [key, what it does], per view.
 export const HINTS = {
-    list: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["t", "bb thread"], ["d", "diff"], ["x", "hide"], ["h", "hidden"], ["r", "refresh"], ["Esc", "close"]],
-    hidden: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["x", "unhide"], ["h/Esc", "back to queue"]],
+    list: SELECT_CHIPS.concat([["t", "bb thread"], ["d", "diff"], ["x", "hide"], ["h", "hidden"], ["r", "refresh"], ["Esc", "close"]]),
+    hidden: SELECT_CHIPS.concat([["x", "unhide"], ["h/Esc", "back to queue"]]),
     diff: [["↑↓", "scroll"], ["PgUp/PgDn", "page"], ["n/p", "file"], ["s", "unified/split"], ["Enter", "open PR"], ["t", "bb thread"], ["Esc", "back"]],
 };

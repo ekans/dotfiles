@@ -26,14 +26,6 @@ pragma ComponentBehavior: Bound
 // kept in $XDG_STATE_HOME/pr-review/hidden, not in this repo. The diff is
 // `gh pr diff`, coloured by one `bat` per file, so it shows in plain text and
 // gains colour file by file.
-//
-// Keys, in the queue: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
-// preview · Enter open · t bb thread · d diff · x hide · h hidden list ·
-// r refresh · Esc close.
-// In the hidden list: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
-// preview · Enter open · x unhide · h or Esc back to the queue.
-// In the diff: ↑↓ or j/k scroll · PgUp/PgDn page · n/p next / previous file ·
-// s unified / split · Enter open · t bb thread · Esc back to the list.
 
 import QtQuick
 import Quickshell
