@@ -328,15 +328,20 @@ test("titles the thread with the number and the title, not the repo", () => {
     assert.equal(threadTitle(PR), "#1952: chore(ui): document the dashboard");
 });
 
-test("spawns a haiku thread in a new worktree of the project", () => {
+test("spawns a haiku thread in a new worktree of the project, its prompt on stdin", () => {
     const argv = spawnCommand("bb", "proj_1", PR);
-    assert.deepEqual(argv.slice(0, -1), [
+    assert.deepEqual(argv, [
         "bb", "thread", "spawn", "--json", "--provider", "claude-code", "--model", "haiku",
         "--reasoning-level", "low", "--project", "proj_1", "--new-environment", "worktree",
-        "--title", "#1952: chore(ui): document the dashboard",
+        "--title", "#1952: chore(ui): document the dashboard", "--prompt-file", "-",
     ]);
-    assert.ok(argv[argv.length - 1].startsWith("--prompt="));
-    assert.equal(argv[argv.length - 1], "--prompt=" + threadPrompt(PR));
+});
+
+test("keeps the prompt out of the arguments, so the longest description starts a thread", () => {
+    // GitHub allows 65536 characters; Linux refuses one argument over 128 KiB.
+    const pr = { repo: "acme/api", number: 5, title: "T", url: "https://github.com/acme/api/pull/5", body: "変".repeat(65536) };
+    for (const arg of spawnCommand("bb", "proj_1", pr))
+        assert.ok(Buffer.byteLength(arg) < 128 * 1024);
 });
 
 test("carries the description into the prompt verbatim", () => {
@@ -464,6 +469,30 @@ test("reads a path with spaces and the lines of a renamed file", () => {
         ["hunk", "@@ -1 +1 @@"],
         ["del", "Old <title> & more"],
         ["add", "New <title> & more"],
+    ]);
+});
+
+test("decodes the paths git quotes, as GitHub sends them", () => {
+    const files = parseDiff([
+        'diff --git "a/Bren\\303\\251 Brown.md" "b/Bren\\303\\251 Brown.md"',
+        "index 1111111..2222222 100644",
+        '--- "a/Bren\\303\\251 Brown.md"',
+        '+++ "b/Bren\\303\\251 Brown.md"',
+        "@@ -1 +1 @@",
+        "-x",
+        "+y",
+        'diff --git "a/D\\\\A.md" "b/D\\\\A.md"',
+        "deleted file mode 100644",
+        'diff --git a/plain.md "b/caf\\303\\251 \\"menu\\"\\tv2.md"',
+        "similarity index 100%",
+        "rename from plain.md",
+        'rename to "caf\\303\\251 \\"menu\\"\\tv2.md"',
+        "",
+    ].join("\n"));
+    assert.deepEqual(files.map(f => [f.path, f.oldPath, f.status]), [
+        ["Brené Brown.md", "Brené Brown.md", "modified"],
+        ["D\\A.md", "D\\A.md", "deleted"],
+        ["café \"menu\"\tv2.md", "plain.md", "renamed"],
     ]);
 });
 
