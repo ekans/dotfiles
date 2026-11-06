@@ -66,6 +66,43 @@ export function parseSearch(text) {
     return out;
 }
 
+// --- the pull requests you will not review -----------------------------------------
+// `$XDG_STATE_HOME/pr-review/hidden`: one URL per line. State, not config, and
+// it names private work, so it is not in this repo.
+
+export function parseHidden(text) {
+    return String(text || "").split("\n").map(line => line.trim()).filter(line => line !== "");
+}
+
+// The file's text for `hidden`, only the URLs still in `prs` (the whole list
+// gh gave, not what the list shows) so the file does not outgrow the queue.
+// A list gh has not answered yet is no reason to forget what was hidden.
+export function hiddenText(hidden, prs) {
+    if (prs === null)
+        return hidden.map(url => url + "\n").join("");
+    const listed = {};
+    for (const pr of prs)
+        listed[pr.url] = true;
+    return hidden.filter(url => listed[url] === true).map(url => url + "\n").join("");
+}
+
+// The pull requests the list shows.
+export function visiblePrs(prs, hidden, showHidden) {
+    if (prs === null || showHidden)
+        return prs;
+    return prs.filter(pr => hidden.indexOf(pr.url) === -1);
+}
+
+// How many of `prs` are hidden, for the header.
+export function hiddenCount(prs, hidden) {
+    return prs === null ? 0 : prs.filter(pr => hidden.indexOf(pr.url) !== -1).length;
+}
+
+// `hidden` with `url` taken out if it is in, put in if not.
+export function toggleHidden(hidden, url) {
+    return hidden.indexOf(url) === -1 ? hidden.concat([url]) : hidden.filter(u => u !== url);
+}
+
 // --- the pull requests ------------------------------------------------------------
 
 const PR_FIELDS = "repository,number,title,url,author,isDraft,updatedAt,body,labels";
@@ -641,7 +678,7 @@ export const KEYS = {
         down: "next", j: "next", "ctrl+j": "next", "ctrl+n": "next",
         up: "prev", k: "prev", "ctrl+k": "prev", "ctrl+p": "prev",
         pageDown: "previewDown", pageUp: "previewUp",
-        return: "open", t: "thread", d: "diff", r: "refresh", escape: "close",
+        return: "open", t: "thread", d: "diff", x: "hide", h: "showHidden", r: "refresh", escape: "close",
     },
     diff: {
         down: "lineDown", j: "lineDown", up: "lineUp", k: "lineUp",
@@ -658,6 +695,6 @@ export function actionFor(view, name) {
 
 // The chips at the bottom, [key, what it does], per view.
 export const HINTS = {
-    list: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["t", "bb thread"], ["d", "diff"], ["r", "refresh"], ["Esc", "close"]],
+    list: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["t", "bb thread"], ["d", "diff"], ["x", "hide/unhide"], ["h", "show hidden"], ["r", "refresh"], ["Esc", "close"]],
     diff: [["↑↓", "scroll"], ["PgUp/PgDn", "page"], ["n/p", "file"], ["s", "unified/split"], ["Enter", "open PR"], ["t", "bb thread"], ["Esc", "back"]],
 };

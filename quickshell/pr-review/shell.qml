@@ -19,11 +19,16 @@ pragma ComponentBehavior: Bound
 // The queue is `gh search prs --review-requested=@me`; the last answer shows
 // at once on each open while gh is asked again. Repos to leave out are
 // `gh search` qualifiers in $XDG_CONFIG_HOME/pr-review/search, not in this
-// repo: they name private work. The diff is `gh pr diff`, coloured by one
-// `bat` per file, so it shows in plain text and gains colour file by file.
+// repo: they name private work. x hides the focused pull request, one you will
+// not review, and h shows the hidden ones again, dimmed, so x on one unhides
+// it. The hidden URLs, one per line, are state kept in
+// $XDG_STATE_HOME/pr-review/hidden, not in this repo. The diff is
+// `gh pr diff`, coloured by one `bat` per file, so it shows in plain text and
+// gains colour file by file.
 //
 // Keys, in the list: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
-// preview · Enter open · t bb thread · d diff · r refresh · Esc close.
+// preview · Enter open · t bb thread · d diff · x hide / unhide · h show hidden ·
+// r refresh · Esc close.
 // In the diff: ↑↓ or j/k scroll · PgUp/PgDn page · n/p next / previous file ·
 // s unified / split · Enter open · t bb thread · Esc back to the list.
 
@@ -68,11 +73,18 @@ ShellRoot {
 
     // The last answer as [Pr], null until there is one.
     property var prs: null
+    // The URLs of the pull requests hidden, and whether the list shows them anyway.
+    property var hidden: []
+    property bool hiddenReady: false
+    property bool showHidden: false
+    // What the list shows, and the rest of this file indexes: `prs` stays gh's whole answer.
+    readonly property var shown: Logic.visiblePrs(root.prs, root.hidden, root.showHidden)
+    readonly property int hiddenCount: Logic.hiddenCount(root.prs, root.hidden)
     property bool listing: false
     property bool listAgain: false
     property string listFailure: ""
     property int index: 0
-    readonly property var focusedPr: root.prs && root.prs.length > 0 ? (root.prs[root.index] ?? null) : null
+    readonly property var focusedPr: root.shown && root.shown.length > 0 ? (root.shown[root.index] ?? null) : null
 
     // The extra `gh search` qualifiers, once their file has been read or found
     // missing: asking gh sooner would not leave the excluded repos out.
@@ -190,6 +202,20 @@ ShellRoot {
         }
     }
 
+    FileView {
+        id: hiddenFile
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/pr-review/hidden"
+        printErrors: false
+        onLoaded: {
+            root.hidden = Logic.parseHidden(text());
+            root.hiddenReady = true;
+        }
+        onLoadFailed: {
+            root.hidden = [];
+            root.hiddenReady = true;
+        }
+    }
+
     Component.onCompleted: root.refreshProjects()
 
     function refresh() {
@@ -219,10 +245,9 @@ ShellRoot {
             } else {
                 // Keeps the selection on the same pull request.
                 const url = root.focusedPr ? root.focusedPr.url : "";
-                const again = prs.findIndex(p => p.url === url);
                 root.prs = prs;
                 root.listFailure = "";
-                root.index = again >= 0 ? again : Math.max(0, Math.min(root.index, prs.length - 1));
+                root.index = root.indexOfShown(url);
             }
             root.now = Date.now();
             if (root.listAgain) {
@@ -475,8 +500,32 @@ ShellRoot {
 
     // --- keys -------------------------------------------------------------------
 
+    // Where `url` is in the list, else the current place kept inside it.
+    function indexOfShown(url) {
+        const shown = root.shown ?? [];
+        const at = shown.findIndex(p => p.url === url);
+        return at >= 0 ? at : Math.max(0, Math.min(root.index, shown.length - 1));
+    }
+
+    function toggleHide() {
+        const pr = root.focusedPr;
+        // Until the file is read, a write would drop what is in it.
+        if (!pr || !root.hiddenReady)
+            return;
+        root.hidden = Logic.toggleHidden(root.hidden, pr.url);
+        hiddenFile.setText(Logic.hiddenText(root.hidden, root.prs));
+        root.index = root.indexOfShown("");
+    }
+
+    function toggleShowHidden() {
+        const url = root.focusedPr ? root.focusedPr.url : "";
+        root.showHidden = !root.showHidden;
+        root.index = root.indexOfShown(url);
+        prList.positionViewAtIndex(root.index, ListView.Contain);
+    }
+
     function move(step) {
-        const count = root.prs ? root.prs.length : 0;
+        const count = root.shown ? root.shown.length : 0;
         if (count === 0)
             return;
         root.index = (root.index + step + count) % count;
@@ -531,6 +580,8 @@ ShellRoot {
             open: () => root.openPr(),
             thread: () => root.startThread(),
             diff: () => root.showDiff(),
+            hide: () => root.toggleHide(),
+            showHidden: () => root.toggleShowHidden(),
             refresh: () => {
                 if (root.focusedPr)
                     root.setCi(root.focusedPr.url, { phase: "ready", ci: null, at: 0, error: "" });
@@ -660,7 +711,7 @@ ShellRoot {
                         elide: Text.ElideRight
                         text: root.view === "diff" && root.diff
                             ? root.diff.pr.repoName + "#" + root.diff.pr.number + " " + root.diff.pr.title
-                            : "Pull requests waiting for your review" + (root.prs ? " · " + root.prs.length : "")
+                            : "Pull requests waiting for your review" + (root.prs ? " · " + root.prs.length + (root.hiddenCount > 0 ? " · " + root.hiddenCount + " hidden" : "") : "")
                         color: root.view === "diff" ? root.fgColor : root.dimColor
                         font.family: root.monoFont
                         font.pixelSize: 11
@@ -798,7 +849,7 @@ ShellRoot {
                             anchors.margins: 1
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            model: root.prs ?? []
+                            model: root.shown ?? []
                             currentIndex: root.index
 
                             delegate: Rectangle {
@@ -806,6 +857,7 @@ ShellRoot {
                                 required property var modelData
                                 required property int index
                                 readonly property bool current: row.index === root.index
+                                readonly property bool isHidden: root.hidden.indexOf(row.modelData.url) !== -1
 
                                 width: prList.width
                                 height: 56
@@ -825,7 +877,7 @@ ShellRoot {
 
                                     Text {
                                         text: row.modelData.repoName + "#" + row.modelData.number
-                                        color: root.accentColor
+                                        color: row.isHidden ? root.dimColor : root.accentColor
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
@@ -835,6 +887,14 @@ ShellRoot {
                                         color: root.warnColor
                                         font.family: root.monoFont
                                         font.pixelSize: 11
+                                    }
+                                    Text {
+                                        visible: row.isHidden
+                                        text: "hidden"
+                                        color: root.dimColor
+                                        font.family: root.monoFont
+                                        font.pixelSize: 11
+                                        font.italic: true
                                     }
                                     Text {
                                         visible: row.modelData.bot
@@ -850,7 +910,7 @@ ShellRoot {
                                     width: parent.width - 24
                                     elide: Text.ElideRight
                                     text: row.modelData.title
-                                    color: root.fgColor
+                                    color: row.isHidden ? root.dimColor : root.fgColor
                                     font.family: root.monoFont
                                     font.pixelSize: 13
                                 }
@@ -874,8 +934,8 @@ ShellRoot {
 
                         Text {
                             anchors.centerIn: parent
-                            visible: !root.prs || root.prs.length === 0
-                            text: root.prs === null ? (root.listing ? "Asking gh…" : "Nothing from gh yet") : "Nothing waiting for your review"
+                            visible: !root.shown || root.shown.length === 0
+                            text: root.prs === null ? (root.listing ? "Asking gh…" : "Nothing from gh yet") : (root.prs.length > 0 ? "Every pull request is hidden: h shows them" : "Nothing waiting for your review")
                             color: root.dimColor
                             font.family: root.monoFont
                             font.pixelSize: 12

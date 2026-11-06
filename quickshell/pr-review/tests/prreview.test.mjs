@@ -12,6 +12,11 @@ import {
     parseSearch,
     listCommand,
     parsePrs,
+    parseHidden,
+    hiddenText,
+    visiblePrs,
+    hiddenCount,
+    toggleHidden,
     previewBody,
     plainLinks,
     summarizeChecks,
@@ -90,6 +95,57 @@ test("reads gh search prs into pull requests, naming the bot and the draft", () 
     assert.equal(parsePrs(""), null);
     assert.equal(parsePrs("{}"), null);
     assert.deepEqual(parsePrs("[]"), []);
+});
+
+// --- the pull requests you will not review ----------------------------------------
+
+const API = "https://github.com/acme/api/pull/1952";
+const WEB = "https://github.com/acme/web/pull/7";
+const GONE = "https://github.com/acme/old/pull/3";
+
+test("reads the hidden file's URLs, ignoring blank lines and padding", () => {
+    assert.deepEqual(parseHidden(API + "\n\n  " + WEB + "  \n"), [API, WEB]);
+    assert.deepEqual(parseHidden(""), []);
+    assert.deepEqual(parseHidden(null), []);
+});
+
+test("writes one URL per line, only those still in the queue", () => {
+    const prs = parsePrs(SEARCH_JSON);
+    assert.equal(hiddenText([API, GONE, WEB], prs), API + "\n" + WEB + "\n");
+    assert.equal(hiddenText([GONE], prs), "");
+    assert.deepEqual(parseHidden(hiddenText([WEB, API], prs)), [WEB, API]);
+});
+
+test("keeps what was hidden while gh has not answered", () => {
+    assert.equal(hiddenText([API], null), API + "\n");
+});
+
+test("shows every pull request but the hidden ones, or all of them on request", () => {
+    const prs = parsePrs(SEARCH_JSON);
+    assert.deepEqual(visiblePrs(prs, [API], false).map(p => p.url), [WEB]);
+    assert.deepEqual(visiblePrs(prs, [API], true).map(p => p.url), [API, WEB]);
+    assert.deepEqual(visiblePrs(prs, [], false).map(p => p.url), [API, WEB]);
+    assert.deepEqual(visiblePrs(prs, [API, WEB], false), []);
+});
+
+test("has no list before gh has answered, hidden or not", () => {
+    assert.equal(visiblePrs(null, [API], false), null);
+    assert.equal(visiblePrs(null, [API], true), null);
+});
+
+test("counts the hidden URLs that are in the list, not those that left it", () => {
+    const prs = parsePrs(SEARCH_JSON);
+    assert.equal(hiddenCount(prs, [API, GONE]), 1);
+    assert.equal(hiddenCount(prs, []), 0);
+    assert.equal(hiddenCount(null, [API]), 0);
+});
+
+test("hides a pull request that is shown and unhides one that is hidden", () => {
+    assert.deepEqual(toggleHidden([API], WEB), [API, WEB]);
+    assert.deepEqual(toggleHidden([API, WEB], API), [WEB]);
+    const before = [API];
+    toggleHidden(before, WEB);
+    assert.deepEqual(before, [API]);
 });
 
 test("drops list entries that are not pull requests", () => {
@@ -549,6 +605,9 @@ test("dispatches each key through its view's table", () => {
     assert.equal(actionFor("list", "ctrl+k"), "prev");
     assert.equal(actionFor("list", "d"), "diff");
     assert.equal(actionFor("list", "escape"), "close");
+    assert.equal(actionFor("list", "x"), "hide");
+    assert.equal(actionFor("list", "h"), "showHidden");
+    assert.equal(actionFor("diff", "x"), "");
     assert.equal(actionFor("diff", "escape"), "back");
     assert.equal(actionFor("diff", "s"), "mode");
     assert.equal(actionFor("diff", "d"), "");
@@ -559,4 +618,10 @@ test("dispatches each key through its view's table", () => {
 test("hints every action a view has a key for", () => {
     assert.deepEqual(Object.keys(HINTS), ["list", "diff"]);
     assert.ok(HINTS.diff.some(h => h[1] === "unified/split"));
+});
+
+test("hints the hide keys before refresh", () => {
+    const keys = HINTS.list.map(h => h[0]);
+    assert.deepEqual(HINTS.list.filter(h => h[0] === "x" || h[0] === "h"), [["x", "hide/unhide"], ["h", "show hidden"]]);
+    assert.ok(keys.indexOf("x") < keys.indexOf("r") && keys.indexOf("h") < keys.indexOf("r"));
 });
