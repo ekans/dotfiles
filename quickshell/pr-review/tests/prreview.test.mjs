@@ -54,7 +54,6 @@ const SEARCH_JSON = JSON.stringify([
     {
         author: { id: "U1", is_bot: false, login: "mona", type: "User", url: "https://github.com/mona" },
         body: "## Why\n\n<!-- template hint -->\nThe cache never expired.",
-        isDraft: false,
         labels: [{ id: "L1", name: "bug", color: "d73a4a" }, { id: "L2", name: "backend", color: "000000" }],
         number: 1952,
         repository: { name: "api", nameWithOwner: "acme/api" },
@@ -65,7 +64,6 @@ const SEARCH_JSON = JSON.stringify([
     {
         author: { id: "U2", is_bot: true, login: "app/dependabot", type: "Bot", url: "https://github.com/apps/dependabot" },
         body: "",
-        isDraft: true,
         labels: [],
         number: 7,
         repository: { name: "web", nameWithOwner: "acme/web" },
@@ -75,7 +73,7 @@ const SEARCH_JSON = JSON.stringify([
     },
 ]);
 
-test("reads gh search prs into pull requests, naming the bot and the draft", () => {
+test("reads gh search prs into pull requests, naming the bot", () => {
     const prs = parsePrs(SEARCH_JSON);
     assert.equal(prs.length, 2);
     assert.deepEqual(prs[0], {
@@ -86,13 +84,11 @@ test("reads gh search prs into pull requests, naming the bot and the draft", () 
         title: "chore(ui): document the dashboard",
         author: "mona",
         bot: false,
-        draft: false,
         updatedAt: Date.parse("2026-11-05T14:09:00Z"),
         body: "## Why\n\n<!-- template hint -->\nThe cache never expired.",
         labels: ["bug", "backend"],
     });
     assert.equal(prs[1].bot, true);
-    assert.equal(prs[1].draft, true);
     assert.equal(parsePrs(""), null);
     assert.equal(parsePrs("{}"), null);
     assert.deepEqual(parsePrs("[]"), []);
@@ -205,6 +201,12 @@ test("puts the qualifiers after -- so a leading dash is not a flag", () => {
     assert.deepEqual(command.slice(0, 4), ["gh", "search", "prs", "--review-requested=@me"]);
     assert.deepEqual(command.slice(-2), ["--", "-repo:acme/old"]);
     assert.ok(command.indexOf("--json") < command.indexOf("--"));
+});
+
+test("leaves drafts out of the queue", () => {
+    const command = listCommand([]);
+    assert.ok(command.indexOf("--draft=false") !== -1);
+    assert.ok(command.indexOf("--draft=false") < command.indexOf("--"));
 });
 
 // --- CI -------------------------------------------------------------------------

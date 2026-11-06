@@ -106,15 +106,16 @@ export function toggleHidden(hidden, url) {
 
 // --- the pull requests ------------------------------------------------------------
 
-const PR_FIELDS = "repository,number,title,url,author,isDraft,updatedAt,body,labels";
+const PR_FIELDS = "repository,number,title,url,author,updatedAt,body,labels";
 
+// A draft is not waiting for a review yet, so the queue leaves drafts out.
 // After `--` so a qualifier such as -repo:a/b is not read as a flag.
 export function listCommand(qualifiers) {
-    return ["gh", "search", "prs", "--review-requested=@me", "--state=open", "--sort=updated",
-        "--limit", "200", "--json", PR_FIELDS, "--"].concat(qualifiers);
+    return ["gh", "search", "prs", "--review-requested=@me", "--state=open", "--draft=false",
+        "--sort=updated", "--limit", "200", "--json", PR_FIELDS, "--"].concat(qualifiers);
 }
 
-// A Pr: {url, repo: "owner/name", repoName, number, title, author, bot, draft,
+// A Pr: {url, repo: "owner/name", repoName, number, title, author, bot,
 // updatedAt (ms), body, labels: [name]}.
 function toPr(raw) {
     if (!raw || typeof raw.url !== "string" || typeof raw.number !== "number")
@@ -131,7 +132,6 @@ function toPr(raw) {
         title: String(raw.title || ""),
         author: login,
         bot: author.is_bot === true || author.type === "Bot" || /\[bot\]$/.test(login),
-        draft: raw.isDraft === true,
         updatedAt: Date.parse(raw.updatedAt) || 0,
         body: String(raw.body || ""),
         labels: (Array.isArray(raw.labels) ? raw.labels : []).map(l => String(l && l.name || "")).filter(n => n !== ""),

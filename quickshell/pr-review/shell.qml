@@ -16,14 +16,15 @@ pragma ComponentBehavior: Bound
 // It runs as pr-review.service, which niri.service pulls in through
 // ~/.config/systemd/user/niri.service.d/50-pr-review.conf like bb-go.service.
 //
-// The queue is `gh search prs --review-requested=@me`; the last answer shows
-// at once on each open while gh is asked again. Repos to leave out are
-// `gh search` qualifiers in $XDG_CONFIG_HOME/pr-review/search, not in this
-// repo: they name private work. x hides the focused pull request, one you will
-// not review, and h lists the hidden ones alone, where x unhides. The hidden
-// URLs, one per line, are state kept in $XDG_STATE_HOME/pr-review/hidden, not
-// in this repo. The diff is `gh pr diff`, coloured by one `bat` per file, so it
-// shows in plain text and gains colour file by file.
+// The queue is `gh search prs --review-requested=@me --draft=false`: a draft
+// does not wait for a review yet. The last answer shows at once on each open
+// while gh is asked again. Repos to leave out are `gh search` qualifiers in
+// $XDG_CONFIG_HOME/pr-review/search, not in this repo: they name private work.
+// x hides the focused pull request, one you will not review, and h lists the
+// hidden ones alone, where x unhides. The hidden URLs, one per line, are state
+// kept in $XDG_STATE_HOME/pr-review/hidden, not in this repo. The diff is
+// `gh pr diff`, coloured by one `bat` per file, so it shows in plain text and
+// gains colour file by file.
 //
 // Keys, in the queue: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
 // preview · Enter open · t bb thread · d diff · x hide · h hidden list ·
@@ -890,13 +891,6 @@ ShellRoot {
                                     Text {
                                         text: row.modelData.repoName + "#" + row.modelData.number
                                         color: root.accentColor
-                                        font.family: root.monoFont
-                                        font.pixelSize: 11
-                                    }
-                                    Text {
-                                        visible: row.modelData.draft
-                                        text: "draft"
-                                        color: root.warnColor
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
