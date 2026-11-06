@@ -44,6 +44,7 @@ import {
     fileNumberAt,
     keyName,
     actionFor,
+    KEYS,
     HINTS,
 } from "../prreview.mjs";
 
@@ -120,12 +121,15 @@ test("keeps what was hidden while gh has not answered", () => {
     assert.equal(hiddenText([API], null), API + "\n");
 });
 
-test("shows every pull request but the hidden ones, or all of them on request", () => {
+test("lists the pull requests not hidden, or only the hidden ones", () => {
     const prs = parsePrs(SEARCH_JSON);
     assert.deepEqual(visiblePrs(prs, [API], false).map(p => p.url), [WEB]);
-    assert.deepEqual(visiblePrs(prs, [API], true).map(p => p.url), [API, WEB]);
+    assert.deepEqual(visiblePrs(prs, [API], true).map(p => p.url), [API]);
     assert.deepEqual(visiblePrs(prs, [], false).map(p => p.url), [API, WEB]);
+    assert.deepEqual(visiblePrs(prs, [], true), []);
     assert.deepEqual(visiblePrs(prs, [API, WEB], false), []);
+    assert.deepEqual(visiblePrs(prs, [API, WEB], true).map(p => p.url), [API, WEB]);
+    assert.deepEqual(visiblePrs(prs, [GONE], true), []);
 });
 
 test("has no list before gh has answered, hidden or not", () => {
@@ -606,8 +610,17 @@ test("dispatches each key through its view's table", () => {
     assert.equal(actionFor("list", "d"), "diff");
     assert.equal(actionFor("list", "escape"), "close");
     assert.equal(actionFor("list", "x"), "hide");
-    assert.equal(actionFor("list", "h"), "showHidden");
+    assert.equal(actionFor("list", "h"), "hidden");
     assert.equal(actionFor("diff", "x"), "");
+    assert.equal(actionFor("hidden", "x"), "hide");
+    assert.equal(actionFor("hidden", "h"), "back");
+    assert.equal(actionFor("hidden", "escape"), "back");
+    assert.equal(actionFor("hidden", "ctrl+n"), "next");
+    assert.equal(actionFor("hidden", "k"), "prev");
+    assert.equal(actionFor("hidden", "pageDown"), "previewDown");
+    assert.equal(actionFor("hidden", "return"), "open");
+    for (const key of ["t", "d", "r"])
+        assert.equal(actionFor("hidden", key), "");
     assert.equal(actionFor("diff", "escape"), "back");
     assert.equal(actionFor("diff", "s"), "mode");
     assert.equal(actionFor("diff", "d"), "");
@@ -616,12 +629,27 @@ test("dispatches each key through its view's table", () => {
 });
 
 test("hints every action a view has a key for", () => {
-    assert.deepEqual(Object.keys(HINTS), ["list", "diff"]);
+    assert.deepEqual(Object.keys(HINTS).sort(), ["diff", "hidden", "list"]);
+    assert.deepEqual(Object.keys(KEYS).sort(), ["diff", "hidden", "list"]);
     assert.ok(HINTS.diff.some(h => h[1] === "unified/split"));
+    const chipFor = { return: "Enter", escape: "Esc", down: "↑↓", up: "↑↓", pageDown: "PgDn", pageUp: "PgUp" };
+    for (const view of Object.keys(KEYS)) {
+        const chips = HINTS[view].map(h => h[0].split("/")).reduce((all, keys) => all.concat(keys), []);
+        for (const key of Object.keys(KEYS[view])) {
+            // j/k and Ctrl+J/K/N/P are the arrows' aliases, n/p the diff's one chip.
+            if (/^(j|k|ctrl\+.)$/.test(key))
+                continue;
+            assert.ok(chips.indexOf(chipFor[key] ?? key) !== -1, view + " has no chip for " + key);
+        }
+    }
 });
 
-test("hints the hide keys before refresh", () => {
+test("hints the hide keys before refresh in the queue", () => {
     const keys = HINTS.list.map(h => h[0]);
-    assert.deepEqual(HINTS.list.filter(h => h[0] === "x" || h[0] === "h"), [["x", "hide/unhide"], ["h", "show hidden"]]);
+    assert.deepEqual(HINTS.list.filter(h => h[0] === "x" || h[0] === "h"), [["x", "hide"], ["h", "hidden"]]);
     assert.ok(keys.indexOf("x") < keys.indexOf("r") && keys.indexOf("h") < keys.indexOf("r"));
+});
+
+test("hints the hidden list's keys: unhide with x, back with h or Esc", () => {
+    assert.deepEqual(HINTS.hidden, [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["x", "unhide"], ["h/Esc", "back to queue"]]);
 });

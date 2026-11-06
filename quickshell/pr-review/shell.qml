@@ -20,15 +20,16 @@ pragma ComponentBehavior: Bound
 // at once on each open while gh is asked again. Repos to leave out are
 // `gh search` qualifiers in $XDG_CONFIG_HOME/pr-review/search, not in this
 // repo: they name private work. x hides the focused pull request, one you will
-// not review, and h shows the hidden ones again, dimmed, so x on one unhides
-// it. The hidden URLs, one per line, are state kept in
-// $XDG_STATE_HOME/pr-review/hidden, not in this repo. The diff is
-// `gh pr diff`, coloured by one `bat` per file, so it shows in plain text and
-// gains colour file by file.
+// not review, and h lists the hidden ones alone, where x unhides. The hidden
+// URLs, one per line, are state kept in $XDG_STATE_HOME/pr-review/hidden, not
+// in this repo. The diff is `gh pr diff`, coloured by one `bat` per file, so it
+// shows in plain text and gains colour file by file.
 //
-// Keys, in the list: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
-// preview · Enter open · t bb thread · d diff · x hide / unhide · h show hidden ·
+// Keys, in the queue: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
+// preview · Enter open · t bb thread · d diff · x hide · h hidden list ·
 // r refresh · Esc close.
+// In the hidden list: ↑↓ or j/k or Ctrl+J/K select · PgUp/PgDn scroll the
+// preview · Enter open · x unhide · h or Esc back to the queue.
 // In the diff: ↑↓ or j/k scroll · PgUp/PgDn page · n/p next / previous file ·
 // s unified / split · Enter open · t bb thread · Esc back to the list.
 
@@ -66,19 +67,20 @@ ShellRoot {
     property var targetScreen: null
     property double now: Date.now()
 
-    // "list" or "diff".
+    // "list" (the queue), "hidden" (the pull requests you hid) or "diff".
     property string view: "list"
 
     // --- what gh lists ----------------------------------------------------------
 
     // The last answer as [Pr], null until there is one.
     property var prs: null
-    // The URLs of the pull requests hidden, and whether the list shows them anyway.
+    // The URLs of the pull requests hidden.
     property var hidden: []
     property bool hiddenReady: false
-    property bool showHidden: false
+    // The queue's focused pull request while the hidden list is open.
+    property string queueUrl: ""
     // What the list shows, and the rest of this file indexes: `prs` stays gh's whole answer.
-    readonly property var shown: Logic.visiblePrs(root.prs, root.hidden, root.showHidden)
+    readonly property var shown: Logic.visiblePrs(root.prs, root.hidden, root.view === "hidden")
     readonly property int hiddenCount: Logic.hiddenCount(root.prs, root.hidden)
     property bool listing: false
     property bool listAgain: false
@@ -515,13 +517,25 @@ ShellRoot {
         root.hidden = Logic.toggleHidden(root.hidden, pr.url);
         hiddenFile.setText(Logic.hiddenText(root.hidden, root.prs));
         root.index = root.indexOfShown("");
+        if (root.view === "hidden" && root.shown.length === 0)
+            root.back();
     }
 
-    function toggleShowHidden() {
-        const url = root.focusedPr ? root.focusedPr.url : "";
-        root.showHidden = !root.showHidden;
-        root.index = root.indexOfShown(url);
-        prList.positionViewAtIndex(root.index, ListView.Contain);
+    function showHiddenList() {
+        root.queueUrl = root.focusedPr ? root.focusedPr.url : "";
+        root.view = "hidden";
+        root.index = 0;
+        prList.positionViewAtIndex(0, ListView.Beginning);
+    }
+
+    function back() {
+        const fromHidden = root.view === "hidden";
+        root.view = "list";
+        root.error = "";
+        if (fromHidden) {
+            root.index = root.indexOfShown(root.queueUrl);
+            prList.positionViewAtIndex(root.index, ListView.Contain);
+        }
     }
 
     function move(step) {
@@ -581,7 +595,7 @@ ShellRoot {
             thread: () => root.startThread(),
             diff: () => root.showDiff(),
             hide: () => root.toggleHide(),
-            showHidden: () => root.toggleShowHidden(),
+            hidden: () => root.showHiddenList(),
             refresh: () => {
                 if (root.focusedPr)
                     root.setCi(root.focusedPr.url, { phase: "ready", ci: null, at: 0, error: "" });
@@ -596,10 +610,7 @@ ShellRoot {
             nextFile: () => root.stepFile(1),
             prevFile: () => root.stepFile(-1),
             mode: () => root.toggleMode(),
-            back: () => {
-                root.view = "list";
-                root.error = "";
-            }
+            back: () => root.back()
         })
 
     // --- the overlay ------------------------------------------------------------
@@ -711,7 +722,9 @@ ShellRoot {
                         elide: Text.ElideRight
                         text: root.view === "diff" && root.diff
                             ? root.diff.pr.repoName + "#" + root.diff.pr.number + " " + root.diff.pr.title
-                            : "Pull requests waiting for your review" + (root.prs ? " · " + root.prs.length + (root.hiddenCount > 0 ? " · " + root.hiddenCount + " hidden" : "") : "")
+                            : root.view === "hidden"
+                            ? "Hidden pull requests" + (root.prs ? " · " + root.hiddenCount : "")
+                            : "Pull requests waiting for your review" + (root.prs ? " · " + root.shown.length + (root.hiddenCount > 0 ? " · " + root.hiddenCount + " hidden" : "") : "")
                         color: root.view === "diff" ? root.fgColor : root.dimColor
                         font.family: root.monoFont
                         font.pixelSize: 11
@@ -817,7 +830,7 @@ ShellRoot {
                 // --- the list view ---------------------------------------------------
                 Item {
                     id: listView
-                    visible: root.view === "list"
+                    visible: root.view !== "diff"
                     anchors {
                         top: header.bottom
                         topMargin: 10
@@ -857,7 +870,6 @@ ShellRoot {
                                 required property var modelData
                                 required property int index
                                 readonly property bool current: row.index === root.index
-                                readonly property bool isHidden: root.hidden.indexOf(row.modelData.url) !== -1
 
                                 width: prList.width
                                 height: 56
@@ -877,7 +889,7 @@ ShellRoot {
 
                                     Text {
                                         text: row.modelData.repoName + "#" + row.modelData.number
-                                        color: row.isHidden ? root.dimColor : root.accentColor
+                                        color: root.accentColor
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
@@ -887,14 +899,6 @@ ShellRoot {
                                         color: root.warnColor
                                         font.family: root.monoFont
                                         font.pixelSize: 11
-                                    }
-                                    Text {
-                                        visible: row.isHidden
-                                        text: "hidden"
-                                        color: root.dimColor
-                                        font.family: root.monoFont
-                                        font.pixelSize: 11
-                                        font.italic: true
                                     }
                                     Text {
                                         visible: row.modelData.bot
@@ -910,7 +914,7 @@ ShellRoot {
                                     width: parent.width - 24
                                     elide: Text.ElideRight
                                     text: row.modelData.title
-                                    color: row.isHidden ? root.dimColor : root.fgColor
+                                    color: root.fgColor
                                     font.family: root.monoFont
                                     font.pixelSize: 13
                                 }
@@ -935,7 +939,7 @@ ShellRoot {
                         Text {
                             anchors.centerIn: parent
                             visible: !root.shown || root.shown.length === 0
-                            text: root.prs === null ? (root.listing ? "Asking gh…" : "Nothing from gh yet") : (root.prs.length > 0 ? "Every pull request is hidden: h shows them" : "Nothing waiting for your review")
+                            text: root.prs === null ? (root.listing ? "Asking gh…" : "Nothing from gh yet") : (root.view === "hidden" ? "Nothing hidden" : root.prs.length > 0 ? "Every pull request is hidden · h lists them" : "Nothing waiting for your review")
                             color: root.dimColor
                             font.family: root.monoFont
                             font.pixelSize: 12

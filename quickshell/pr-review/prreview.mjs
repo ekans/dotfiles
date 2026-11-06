@@ -86,11 +86,12 @@ export function hiddenText(hidden, prs) {
     return hidden.filter(url => listed[url] === true).map(url => url + "\n").join("");
 }
 
-// The pull requests the list shows.
-export function visiblePrs(prs, hidden, showHidden) {
-    if (prs === null || showHidden)
+// The pull requests a list shows: the queue's are those not hidden, the
+// hidden list's only those hidden.
+export function visiblePrs(prs, hidden, hiddenOnly) {
+    if (prs === null)
         return prs;
-    return prs.filter(pr => hidden.indexOf(pr.url) === -1);
+    return prs.filter(pr => (hidden.indexOf(pr.url) !== -1) === hiddenOnly);
 }
 
 // How many of `prs` are hidden, for the header.
@@ -678,7 +679,13 @@ export const KEYS = {
         down: "next", j: "next", "ctrl+j": "next", "ctrl+n": "next",
         up: "prev", k: "prev", "ctrl+k": "prev", "ctrl+p": "prev",
         pageDown: "previewDown", pageUp: "previewUp",
-        return: "open", t: "thread", d: "diff", x: "hide", h: "showHidden", r: "refresh", escape: "close",
+        return: "open", t: "thread", d: "diff", x: "hide", h: "hidden", r: "refresh", escape: "close",
+    },
+    hidden: {
+        down: "next", j: "next", "ctrl+j": "next", "ctrl+n": "next",
+        up: "prev", k: "prev", "ctrl+k": "prev", "ctrl+p": "prev",
+        pageDown: "previewDown", pageUp: "previewUp",
+        return: "open", x: "hide", h: "back", escape: "back",
     },
     diff: {
         down: "lineDown", j: "lineDown", up: "lineUp", k: "lineUp",
@@ -695,6 +702,7 @@ export function actionFor(view, name) {
 
 // The chips at the bottom, [key, what it does], per view.
 export const HINTS = {
-    list: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["t", "bb thread"], ["d", "diff"], ["x", "hide/unhide"], ["h", "show hidden"], ["r", "refresh"], ["Esc", "close"]],
+    list: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["t", "bb thread"], ["d", "diff"], ["x", "hide"], ["h", "hidden"], ["r", "refresh"], ["Esc", "close"]],
+    hidden: [["↑↓", "select"], ["PgUp/PgDn", "preview"], ["Enter", "open PR"], ["x", "unhide"], ["h/Esc", "back to queue"]],
     diff: [["↑↓", "scroll"], ["PgUp/PgDn", "page"], ["n/p", "file"], ["s", "unified/split"], ["Enter", "open PR"], ["t", "bb thread"], ["Esc", "back"]],
 };
