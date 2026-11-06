@@ -66,6 +66,38 @@ const NODES = [
         repository: { nameWithOwner: "acme/api", name: "api" },
         labels: { nodes: [{ name: "bug" }, { name: "backend" }] },
         ...rollup([check("build", "COMPLETED", "SUCCESS"), check("test", "COMPLETED", "FAILURE")]),
+        comments: { nodes: [
+            { author: { login: "mona", __typename: "User" }, body: "Why not a TTL?", createdAt: "2026-11-05T10:00:00Z" },
+            { author: { login: "ci-bot", __typename: "Bot" }, body: "Coverage 80%", createdAt: "2026-11-05T10:05:00Z" },
+            { author: { login: "hubot", __typename: "User" }, body: "<!-- only a hint -->", createdAt: "2026-11-05T10:06:00Z" },
+        ] },
+        reviews: { nodes: [
+            { author: { login: "lisa", __typename: "User" }, body: "Looks <!-- x -->good", state: "APPROVED", submittedAt: "2026-11-05T12:00:00Z" },
+            { author: { login: "bart", __typename: "User" }, body: "Please split it", state: "CHANGES_REQUESTED", submittedAt: "2026-11-05T09:00:00Z" },
+            { author: { login: "bart", __typename: "User" }, body: "", state: "COMMENTED", submittedAt: "2026-11-05T11:00:00Z" },
+            { author: { login: "bart", __typename: "User" }, body: "draft thoughts", state: "PENDING", submittedAt: null },
+            { author: { login: "carl", __typename: "User" }, body: "No longer applies", state: "DISMISSED", submittedAt: "2026-11-05T13:00:00Z" },
+            { author: { login: "ned", __typename: "User" }, body: "Seen", state: "COMMENTED", submittedAt: "2026-11-05T13:30:00Z" },
+        ] },
+        reviewThreads: { nodes: [
+            { isResolved: false, path: "lib/cache.ex", line: 42, originalLine: 40, comments: { nodes: [
+                { author: { login: "lisa", __typename: "User" }, body: "Off by one?", createdAt: "2026-11-05T09:30:00Z" },
+                { author: { login: "copilot", __typename: "Bot" }, body: "Suggestion", createdAt: "2026-11-05T09:35:00Z" },
+                { author: { login: "mona", __typename: "User" }, body: "Fixed", createdAt: "2026-11-05T12:30:00Z" },
+            ] } },
+            { isResolved: true, path: "lib/old.ex", line: 1, originalLine: 1, comments: { nodes: [
+                { author: { login: "lisa", __typename: "User" }, body: "Done already", createdAt: "2026-11-05T08:00:00Z" },
+            ] } },
+            { isResolved: false, path: "lib/moved.ex", line: null, originalLine: 7, comments: { nodes: [
+                { author: { login: "bart", __typename: "User" }, body: "Gone from the diff", createdAt: "2026-11-05T14:00:00Z" },
+            ] } },
+            { isResolved: false, path: "README.md", line: null, originalLine: null, comments: { nodes: [
+                { author: null, body: "Nit", createdAt: "2026-11-05T15:00:00Z" },
+            ] } },
+            { isResolved: false, path: "lib/bots.ex", line: 3, originalLine: 3, comments: { nodes: [
+                { author: { login: "copilot", __typename: "Bot" }, body: "Only a bot", createdAt: "2026-11-05T07:00:00Z" },
+            ] } },
+        ] },
     },
     {
         url: "https://github.com/acme/web/pull/7",
@@ -96,7 +128,9 @@ test("reads the query's pull requests, naming the bot", () => {
         body: "## Why\n\n<!-- template hint -->\nThe cache never expired.",
         labels: ["bug", "backend"],
         ci: { state: "failure", passed: 1, failed: 1, pending: 0, failing: ["test"] },
+        comments: prs[0].comments,
     });
+    assert.deepEqual(prs[1].comments, []);
     assert.equal(prs[1].bot, true);
     assert.equal(prs[1].author, "dependabot");
 });
@@ -127,6 +161,32 @@ test("reads the CI of the last commit, none when it has no rollup", () => {
     assert.equal(parsePrs(JSON.stringify(noCommits))[0].ci.state, "none");
     const pending = Object.assign({}, NODES[1], rollup([{ __typename: "StatusContext", context: "ci/x", state: "PENDING" }]));
     assert.equal(parsePrs(JSON.stringify(pending))[0].ci.state, "pending");
+});
+
+test("lists a pull request's comments in time order, a code thread kept together", () => {
+    const comments = parsePrs(SEARCH_JSON)[0].comments;
+    assert.deepEqual(comments.map(c => [c.author, c.label, c.body]), [
+        ["bart", "requested changes", "Please split it"],
+        ["lisa", "lib/cache.ex:42", "Off by one?"],
+        ["mona", "lib/cache.ex:42", "Fixed"],
+        ["mona", "", "Why not a TTL?"],
+        ["lisa", "approved", "Looks good"],
+        ["carl", "dismissed", "No longer applies"],
+        ["ned", "reviewed", "Seen"],
+        ["bart", "lib/moved.ex:7", "Gone from the diff"],
+        ["ghost", "README.md", "Nit"],
+    ]);
+    assert.equal(comments[0].at, Date.parse("2026-11-05T09:00:00Z"));
+});
+
+test("keeps equal times in the order they came", () => {
+    const same = "2026-11-05T09:00:00Z";
+    const node = (login, at) => ({ author: { login: login, __typename: "User" }, body: login, createdAt: at });
+    const raw = Object.assign({}, NODES[1], {
+        comments: { nodes: [node("a", same), node("b", same)] },
+        reviewThreads: { nodes: [{ isResolved: false, path: "x", line: 1, comments: { nodes: [node("c", same)] } }] },
+    });
+    assert.deepEqual(parsePrs(JSON.stringify(raw))[0].comments.map(c => c.author), ["a", "b", "c"]);
 });
 
 // --- the pull requests you will not review ----------------------------------------

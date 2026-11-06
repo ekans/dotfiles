@@ -111,6 +111,10 @@ const QUERY = `query($q: String!, $endCursor: String) {
         author { login __typename }
         repository { nameWithOwner name }
         labels(first: 20) { nodes { name } }
+        comments(last: 10) { nodes { author { login __typename } body createdAt } }
+        reviews(last: 10) { nodes { author { login __typename } body state submittedAt } }
+        reviewThreads(first: 20) { nodes { isResolved path line originalLine
+          comments(first: 5) { nodes { author { login __typename } body createdAt } } } }
         commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
           __typename
           ... on CheckRun { name status conclusion }
@@ -134,8 +138,59 @@ function checksOf(raw) {
     return (rollup.contexts || {}).nodes || [];
 }
 
+const REVIEW_LABEL = {
+    APPROVED: "approved", CHANGES_REQUESTED: "requested changes", COMMENTED: "reviewed", DISMISSED: "dismissed",
+};
+
+// A Comment from a GraphQL comment node, null for a bot's or an empty one.
+function commentOf(node, at, label) {
+    if (!node || (node.author && node.author.__typename === "Bot"))
+        return null;
+    const body = previewBody(node.body);
+    if (body === "")
+        return null;
+    // GitHub's own name for a deleted account.
+    return { author: String((node.author && node.author.login) || "ghost"), at: Date.parse(at) || 0, label: label, body: body };
+}
+
+function nodesOf(connection) {
+    return (connection || {}).nodes || [];
+}
+
+function threadLabel(thread) {
+    const path = String(thread.path || "");
+    const line = thread.line || thread.originalLine;
+    return line ? path + ":" + line : path;
+}
+
+// The conversation, the reviews and the code threads of a pull request as
+// [Comment] in time order. A thread is one group, ordered by its first comment,
+// so its replies stay under it.
+function commentsOf(raw) {
+    const groups = [];
+    for (const node of nodesOf(raw.comments))
+        groups.push([commentOf(node, node && node.createdAt, "")]);
+    for (const node of nodesOf(raw.reviews)) {
+        const label = node && REVIEW_LABEL[node.state];
+        if (label)
+            groups.push([commentOf(node, node.submittedAt, label)]);
+    }
+    for (const thread of nodesOf(raw.reviewThreads)) {
+        if (!thread || thread.isResolved)
+            continue;
+        const label = threadLabel(thread);
+        groups.push(nodesOf(thread.comments).map(node => commentOf(node, node && node.createdAt, label)));
+    }
+    const kept = groups.map(group => group.filter(entry => entry !== null)).filter(group => group.length > 0);
+    // The index keeps equal times in the order they came, whatever the engine's sort.
+    return kept.map((group, i) => ({ group: group, i: i }))
+        .sort((a, b) => a.group[0].at - b.group[0].at || a.i - b.i)
+        .reduce((all, g) => all.concat(g.group), []);
+}
+
 // A Pr: {url, repo: "owner/name", repoName, number, title, author, bot,
-// updatedAt (ms), body, labels: [name], ci}.
+// updatedAt (ms), body, labels: [name], ci, comments: [Comment]}, a Comment
+// {author, at (ms), label: "" | "approved" | "path:line" | …, body: previewBody'd}.
 function toPr(raw) {
     if (!raw || typeof raw.url !== "string" || typeof raw.number !== "number")
         return null;
@@ -155,6 +210,7 @@ function toPr(raw) {
         body: String(raw.body || ""),
         labels: ((raw.labels || {}).nodes || []).map(l => String(l && l.name || "")).filter(n => n !== ""),
         ci: summarizeChecks(checksOf(raw)),
+        comments: commentsOf(raw),
     };
 }
 

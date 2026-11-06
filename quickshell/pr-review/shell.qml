@@ -117,6 +117,19 @@ ShellRoot {
         font.pixelSize: 11
     }
 
+    // Markdown as the preview shows it: a description or a comment. `markdown`
+    // has had previewBody applied.
+    component Body: Mono {
+        property string markdown: ""
+
+        width: parent.width
+        wrapMode: Text.Wrap
+        textFormat: Text.MarkdownText
+        text: Logic.plainLinks(markdown)
+        color: root.fgColor
+        font.pixelSize: 12
+    }
+
     // A process that collects its output and says it is done with it. Giving
     // run() an input opens stdin, writes it and closes it again: the process
     // reads to the end of its input before it goes on.
@@ -956,14 +969,62 @@ ShellRoot {
                             }
 
                             Mono {
-                                readonly property string body: root.focusedPr ? Logic.previewBody(root.focusedPr.body) : ""
-                                readonly property string shown: Logic.plainLinks(body)
+                                visible: descriptionBody.markdown === ""
                                 width: parent.width
-                                wrapMode: Text.Wrap
-                                textFormat: body === "" ? Text.PlainText : Text.MarkdownText
-                                text: body === "" ? "No description." : shown
-                                color: body === "" ? root.dimColor : root.fgColor
+                                text: "No description."
+                                color: root.dimColor
                                 font.pixelSize: 12
+                            }
+
+                            Body {
+                                id: descriptionBody
+                                visible: markdown !== ""
+                                markdown: root.focusedPr ? Logic.previewBody(root.focusedPr.body) : ""
+                            }
+
+                            Rectangle {
+                                visible: commentsBlock.comments.length > 0
+                                width: parent.width
+                                height: 1
+                                color: root.lineColor
+                            }
+
+                            Column {
+                                id: commentsBlock
+                                readonly property var comments: root.focusedPr ? root.focusedPr.comments : []
+                                visible: comments.length > 0
+                                width: parent.width
+                                spacing: 10
+
+                                Mono {
+                                    text: "Comments · " + commentsBlock.comments.length
+                                    color: root.dimColor
+                                }
+
+                                Repeater {
+                                    model: commentsBlock.comments
+
+                                    delegate: Column {
+                                        id: comment
+                                        required property var modelData
+                                        width: commentsBlock.width
+                                        spacing: 3
+
+                                        Mono {
+                                            width: parent.width
+                                            // The middle: a long path must not push the age off the end.
+                                            elide: Text.ElideMiddle
+                                            text: comment.modelData.author
+                                                + (comment.modelData.label !== "" ? " · " + comment.modelData.label : "")
+                                                + " · " + Logic.age(comment.modelData.at, root.now)
+                                            color: root.dimColor
+                                        }
+
+                                        Body {
+                                            markdown: comment.modelData.body
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
