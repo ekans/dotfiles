@@ -57,7 +57,6 @@ ShellRoot {
     readonly property color selectColor: Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.16)
     readonly property color addColor: Qt.rgba(root.goodColor.r, root.goodColor.g, root.goodColor.b, 0.18)
     readonly property color delColor: Qt.rgba(root.badColor.r, root.badColor.g, root.badColor.b, 0.18)
-    readonly property string monoFont: "JetBrains Mono"
 
     // Found on pr-review.service's PATH: gh, bb and bat.
     readonly property string bb: "bb"
@@ -119,6 +118,12 @@ ShellRoot {
 
     readonly property var activePr: root.view === "diff" && root.diff ? root.diff.pr : root.focusedPr
     readonly property var diffStats: root.diff && root.diff.phase === "ready" ? Logic.diffStats(root.diff.files) : null
+
+    // The overlay's text: 11 px mono unless an item says otherwise.
+    component Mono: Text {
+        font.family: "JetBrains Mono"
+        font.pixelSize: 11
+    }
 
     // A process that collects its output and says it is done with it. Giving
     // run() an input opens stdin, writes it and closes it again: the process
@@ -644,7 +649,7 @@ ShellRoot {
                     }
                     height: 16
 
-                    Text {
+                    Mono {
                         id: headerTitle
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - headerRight.implicitWidth - 16
@@ -655,11 +660,9 @@ ShellRoot {
                             ? "Hidden pull requests" + (root.prs ? " · " + root.hiddenCount : "")
                             : "Pull requests waiting for your review" + (root.prs ? " · " + root.shown.length + (root.hiddenCount > 0 ? " · " + root.hiddenCount + " hidden" : "") : "")
                         color: root.view === "diff" ? root.fgColor : root.dimColor
-                        font.family: root.monoFont
-                        font.pixelSize: 11
                         font.bold: root.view === "diff"
                     }
-                    Text {
+                    Mono {
                         id: headerRight
                         anchors {
                             right: parent.right
@@ -679,8 +682,6 @@ ShellRoot {
                             return root.listing ? "asking gh…" : "";
                         }
                         color: root.dimColor
-                        font.family: root.monoFont
-                        font.pixelSize: 11
                     }
                 }
 
@@ -695,24 +696,21 @@ ShellRoot {
                     }
                     spacing: 8
 
-                    Text {
+                    Mono {
                         visible: text !== ""
                         width: parent.width
                         wrapMode: Text.Wrap
                         text: root.error || root.listFailure
                         color: root.badColor
-                        font.family: root.monoFont
                         font.pixelSize: 12
                     }
 
-                    Text {
+                    Mono {
                         visible: root.spawning || root.notice !== ""
                         width: parent.width
                         wrapMode: Text.Wrap
                         text: root.spawning ? "Starting a thread…" : root.notice
                         color: root.spawning ? root.accentColor : root.goodColor
-                        font.family: root.monoFont
-                        font.pixelSize: 11
                     }
 
                     Flow {
@@ -735,21 +733,17 @@ ShellRoot {
                                     color: root.panelColor
                                     border.color: root.lineColor
 
-                                    Text {
+                                    Mono {
                                         id: keyName
                                         anchors.centerIn: parent
                                         text: hint.modelData[0]
                                         color: root.fgColor
-                                        font.family: root.monoFont
-                                        font.pixelSize: 11
                                     }
                                 }
-                                Text {
+                                Mono {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: hint.modelData[1]
                                     color: root.dimColor
-                                    font.family: root.monoFont
-                                    font.pixelSize: 11
                                 }
                             }
                         }
@@ -816,39 +810,32 @@ ShellRoot {
                                     y: 7
                                     spacing: 8
 
-                                    Text {
+                                    Mono {
                                         text: row.modelData.repoName + "#" + row.modelData.number
                                         color: root.accentColor
-                                        font.family: root.monoFont
-                                        font.pixelSize: 11
                                     }
-                                    Text {
+                                    Mono {
                                         visible: row.modelData.bot
                                         text: "bot"
                                         color: root.dimColor
-                                        font.family: root.monoFont
-                                        font.pixelSize: 11
                                     }
                                 }
-                                Text {
+                                Mono {
                                     x: 12
                                     y: 22
                                     width: parent.width - 24
                                     elide: Text.ElideRight
                                     text: row.modelData.title
                                     color: root.fgColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 13
                                 }
-                                Text {
+                                Mono {
                                     x: 12
                                     y: 40
                                     width: parent.width - 24
                                     elide: Text.ElideRight
                                     text: row.modelData.author + " · " + Logic.age(row.modelData.updatedAt, root.now)
                                     color: root.dimColor
-                                    font.family: root.monoFont
-                                    font.pixelSize: 11
                                 }
 
                                 MouseArea {
@@ -858,12 +845,11 @@ ShellRoot {
                             }
                         }
 
-                        Text {
+                        Mono {
                             anchors.centerIn: parent
                             visible: !root.shown || root.shown.length === 0
                             text: root.prs === null ? (root.listing ? "Asking gh…" : "Nothing from gh yet") : (root.view === "hidden" ? "Nothing hidden" : root.prs.length > 0 ? "Every pull request is hidden · h lists them" : "Nothing waiting for your review")
                             color: root.dimColor
-                            font.family: root.monoFont
                             font.pixelSize: 12
                         }
                     }
@@ -889,22 +875,19 @@ ShellRoot {
                             width: previewFlick.width
                             spacing: 8
 
-                            Text {
+                            Mono {
                                 width: parent.width
                                 wrapMode: Text.Wrap
                                 text: root.focusedPr ? root.focusedPr.title : ""
                                 color: root.fgColor
-                                font.family: root.monoFont
                                 font.pixelSize: 15
                                 font.bold: true
                             }
-                            Text {
+                            Mono {
                                 width: parent.width
                                 wrapMode: Text.Wrap
                                 text: root.focusedPr ? root.focusedPr.repo + "#" + root.focusedPr.number + " by " + root.focusedPr.author : ""
                                 color: root.dimColor
-                                font.family: root.monoFont
-                                font.pixelSize: 11
                             }
 
                             // CI: a dot and a word, the checks that failed under it.
@@ -926,28 +909,23 @@ ShellRoot {
                                         radius: 4
                                         color: ciBlock.look ? root.roleColors[ciBlock.look.color] : root.dimColor
                                     }
-                                    Text {
+                                    Mono {
                                         text: ciBlock.look ? ciBlock.look.label : ""
                                         color: ciBlock.look ? root.roleColors[ciBlock.look.color] : root.dimColor
-                                        font.family: root.monoFont
                                         font.pixelSize: 12
                                     }
-                                    Text {
+                                    Mono {
                                         visible: text !== ""
                                         text: ciBlock.ci ? Logic.ciDetail(ciBlock.ci) : ""
                                         color: root.dimColor
-                                        font.family: root.monoFont
-                                        font.pixelSize: 11
                                     }
                                 }
-                                Text {
+                                Mono {
                                     visible: ciBlock.ci !== null && ciBlock.ci.state === "failure"
                                     width: parent.width
                                     wrapMode: Text.Wrap
                                     text: ciBlock.ci ? ciBlock.ci.failing.join(", ") : ""
                                     color: root.badColor
-                                    font.family: root.monoFont
-                                    font.pixelSize: 11
                                 }
                             }
 
@@ -968,12 +946,11 @@ ShellRoot {
                                         color: root.panelColor
                                         border.color: root.lineColor
 
-                                        Text {
+                                        Mono {
                                             id: labelText
                                             anchors.centerIn: parent
                                             text: label.modelData
                                             color: root.fgColor
-                                            font.family: root.monoFont
                                             font.pixelSize: 10
                                         }
                                     }
@@ -986,7 +963,7 @@ ShellRoot {
                                 color: root.lineColor
                             }
 
-                            Text {
+                            Mono {
                                 readonly property string body: root.focusedPr ? Logic.previewBody(root.focusedPr.body) : ""
                                 readonly property string shown: Logic.plainLinks(body)
                                 width: parent.width
@@ -994,7 +971,6 @@ ShellRoot {
                                 textFormat: body === "" ? Text.PlainText : Text.MarkdownText
                                 text: body === "" ? "No description." : shown
                                 color: body === "" ? root.dimColor : root.fgColor
-                                font.family: root.monoFont
                                 font.pixelSize: 12
                             }
                         }
@@ -1049,7 +1025,7 @@ ShellRoot {
                                 anchors.fill: parent
                                 color: root.selectColor
 
-                                Text {
+                                Mono {
                                     id: filePath
                                     anchors {
                                         left: parent.left
@@ -1063,11 +1039,10 @@ ShellRoot {
                                         ? (line.modelData.status === "renamed" ? line.modelData.oldPath + " → " + line.modelData.path : line.modelData.path)
                                         : ""
                                     color: root.fgColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 12
                                     font.bold: true
                                 }
-                                Text {
+                                Mono {
                                     id: fileStats
                                     anchors {
                                         right: parent.right
@@ -1083,8 +1058,6 @@ ShellRoot {
                                         return m.status + counts;
                                     }
                                     color: root.dimColor
-                                    font.family: root.monoFont
-                                    font.pixelSize: 11
                                 }
                             }
 
@@ -1094,7 +1067,7 @@ ShellRoot {
                                 anchors.fill: parent
                                 color: Qt.rgba(1, 1, 1, 0.03)
 
-                                Text {
+                                Mono {
                                     anchors {
                                         left: parent.left
                                         leftMargin: 12
@@ -1104,7 +1077,6 @@ ShellRoot {
                                     elide: Text.ElideRight
                                     text: line.type === "hunk" ? line.modelData.text : ""
                                     color: root.dimColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 12
                                 }
                             }
@@ -1116,37 +1088,34 @@ ShellRoot {
                                 color: line.type !== "line" ? "transparent" : (line.modelData.kind === "add" ? root.addColor : (line.modelData.kind === "del" ? root.delColor : "transparent"))
                                 clip: true
 
-                                Text {
+                                Mono {
                                     x: 0
                                     width: line.gutter - 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     horizontalAlignment: Text.AlignRight
                                     text: line.type === "line" ? (line.modelData.oldNo ?? "") : ""
                                     color: root.dimColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 12
                                 }
-                                Text {
+                                Mono {
                                     x: line.gutter
                                     width: line.gutter - 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     horizontalAlignment: Text.AlignRight
                                     text: line.type === "line" ? (line.modelData.newNo ?? "") : ""
                                     color: root.dimColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 12
                                 }
-                                Text {
+                                Mono {
                                     x: line.gutter * 2
                                     width: 18
                                     anchors.verticalCenter: parent.verticalCenter
                                     horizontalAlignment: Text.AlignHCenter
                                     text: line.type !== "line" ? "" : (line.modelData.kind === "add" ? "+" : (line.modelData.kind === "del" ? "-" : ""))
                                     color: line.type === "line" && line.modelData.kind === "add" ? root.goodColor : root.badColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 12
                                 }
-                                Text {
+                                Mono {
                                     x: line.gutter * 2 + 18
                                     width: parent.width - x
                                     anchors.verticalCenter: parent.verticalCenter
@@ -1155,7 +1124,6 @@ ShellRoot {
                                     clip: true
                                     text: line.type === "line" ? line.modelData.html : ""
                                     color: root.fgColor
-                                    font.family: root.monoFont
                                     font.pixelSize: 12
                                 }
                             }
@@ -1186,17 +1154,16 @@ ShellRoot {
                                             height: parent.height
                                             color: root.lineColor
                                         }
-                                        Text {
+                                        Mono {
                                             x: 0
                                             width: line.gutter - 8
                                             anchors.verticalCenter: parent.verticalCenter
                                             horizontalAlignment: Text.AlignRight
                                             text: side.modelData ? (side.modelData.no ?? "") : ""
                                             color: root.dimColor
-                                            font.family: root.monoFont
                                             font.pixelSize: 12
                                         }
-                                        Text {
+                                        Mono {
                                             x: line.gutter
                                             width: parent.width - x
                                             anchors.verticalCenter: parent.verticalCenter
@@ -1205,7 +1172,6 @@ ShellRoot {
                                             clip: true
                                             text: side.modelData ? side.modelData.html : ""
                                             color: root.fgColor
-                                            font.family: root.monoFont
                                             font.pixelSize: 12
                                         }
                                     }
@@ -1214,7 +1180,7 @@ ShellRoot {
                         }
                     }
 
-                    Text {
+                    Mono {
                         anchors.centerIn: parent
                         visible: !root.diff || root.diff.phase !== "ready" || root.diffRows.length === 0
                         text: !root.diff || root.diff.phase === "loading" ? "Reading the diff…" : (root.diff.phase === "error" ? root.diff.error : "The diff is empty")
@@ -1222,7 +1188,6 @@ ShellRoot {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.Wrap
                         width: parent.width - 40
-                        font.family: root.monoFont
                         font.pixelSize: 12
                     }
                 }
