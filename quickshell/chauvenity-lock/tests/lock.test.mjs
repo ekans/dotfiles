@@ -5,7 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    FINGER_TRIES, MAX_FIREFLIES, fireflyCount, ringRadius, fingerEvent, fingerAfter, fingerText, passwordText,
+    FINGER_TRIES, MAX_FIREFLIES, fireflyCount, ringRadius, SLEEP_MS, BURNOUT_MS,
+    EMBER_LIFE_MS, EMBER_LIFE_VARIATION_MS, PREFILL_EMBERS, wakeBurst, fingerEvent, fingerAfter, fingerText, passwordText,
     resultName, clockLine, capsLockOn,
 } from "../lock.mjs";
 
@@ -19,6 +20,17 @@ test("ringRadius widens with every firefly, up to the most the ring holds", () =
     assert.ok(ringRadius(1) > ringRadius(0));
     assert.ok(ringRadius(8) > ringRadius(7));
     assert.equal(ringRadius(40), ringRadius(MAX_FIREFLIES));
+});
+
+test("the scene falls asleep only once the last ember has burnt out", () => {
+    assert.ok(BURNOUT_MS > EMBER_LIFE_MS + EMBER_LIFE_VARIATION_MS);
+    assert.ok(SLEEP_MS > 0);
+});
+
+test("wakeBurst puts back the embers that burnt out while it dimmed", () => {
+    assert.equal(wakeBurst(0), 0);
+    assert.equal(wakeBurst(EMBER_LIFE_MS / 2), PREFILL_EMBERS / 2);
+    assert.equal(wakeBurst(BURNOUT_MS), PREFILL_EMBERS);
 });
 
 test("fingerEvent reads pam_fprintd's messages", () => {

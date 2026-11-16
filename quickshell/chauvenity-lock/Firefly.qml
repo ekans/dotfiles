@@ -31,7 +31,8 @@ Item {
     property real ring: 0
     property real grow: 1
     property real drop: 0
-    property real pulse: 1
+    // Each firefly's halo pulses out of step with the others'.
+    readonly property real pulse: 0.7 + 0.3 * Math.sin(2 * Math.PI * (fly.scene.twinkle + fly.index * 0.38))
 
     Behavior on angle { id: glideAngle; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
     Behavior on ring { id: glideRing; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
@@ -55,13 +56,6 @@ Item {
     x: Math.cos(fly.angle) * fly.ring * fly.scene.u * fly.grow * fly.scene.spread
     y: Math.sin(fly.angle) * fly.ring * fly.scene.u * fly.grow * fly.scene.spread + fly.drop
     opacity: 0
-
-    SequentialAnimation {
-        running: fly.place > 0
-        loops: Animation.Infinite
-        NumberAnimation { target: fly; property: "pulse"; to: 0.4; duration: 500 + Math.random() * 500; easing.type: Easing.InOutSine }
-        NumberAnimation { target: fly; property: "pulse"; to: 1; duration: 500 + Math.random() * 500; easing.type: Easing.InOutSine }
-    }
 
     Image {
         id: halo

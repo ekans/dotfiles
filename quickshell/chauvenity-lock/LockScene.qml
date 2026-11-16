@@ -11,6 +11,18 @@ pragma ComponentBehavior: Bound
 //   unlocked        everything turns green and flies outward, and green
 //                   embers rush up from the bottom, for EXIT_MS
 //
+// It falls asleep after SLEEP_MS (lock.mjs) with nothing happening:
+//
+//   awake     the embers rise, the ring turns
+//   dimming   no new embers; the live ones rise until they burn out
+//   asleep    BURNOUT_MS later: the particles are paused, the ring stopped,
+//             and nothing on screen moves, so Qt stops redrawing the window
+//
+// A key on any output, the fingerprint and a PAM verdict wake it at once,
+// with embers scattered back over the screen. They reach it through the
+// shell's root, which every output's scene reads, so all of them wake
+// together.
+//
 // The embers are tinted by their sprite rather than by ImageParticle.color:
 // a particle keeps the colour of the first painter that drew it, so a colour
 // change never reaches the embers already alive. On success a second painter
@@ -52,9 +64,56 @@ Item {
         NumberAnimation { property: "flight"; duration: Logic.EXIT_MS; easing.type: Easing.InCubic }
     }
 
+    // --- sleep --------------------------------------------------------------
+
+    // "awake", "dimming" or "asleep".
+    property string sleep: "awake"
+    readonly property bool awake: scene.sleep === "awake"
+    readonly property bool asleep: scene.sleep === "asleep"
+    property real dimmedAt: 0
+
+    function wake() {
+        if (!scene.awake) {
+            const dimmed = Date.now() - scene.dimmedAt;
+            scene.sleep = "awake";
+            prefill.burst(Logic.wakeBurst(dimmed));
+        }
+        doze.restart();
+    }
+
+    Timer {
+        id: doze
+        interval: Logic.SLEEP_MS
+        running: true
+        // While PAM checks, the ring keeps spinning; its verdict wakes the
+        // scene and starts the count again.
+        onTriggered: {
+            if (scene.checking)
+                return;
+            scene.sleep = "dimming";
+            scene.dimmedAt = Date.now();
+        }
+    }
+
+    Timer {
+        interval: Logic.BURNOUT_MS
+        running: scene.sleep === "dimming"
+        onTriggered: scene.sleep = "asleep"
+    }
+
+    Connections {
+        target: scene.lock
+        function onActivityChanged() { scene.wake(); }
+        function onPasswordStateChanged() { scene.wake(); }
+        function onFingerStateChanged() { scene.wake(); }
+    }
+
     // --- embers -------------------------------------------------------------
 
-    ParticleSystem { id: system }
+    ParticleSystem {
+        id: system
+        paused: scene.asleep
+    }
 
     ImageParticle {
         system: system
@@ -94,7 +153,7 @@ Item {
         anchors.bottom: parent.bottom
         width: parent.width
         height: parent.height * 0.3
-        enabled: !scene.unlocked
+        enabled: scene.awake && !scene.unlocked
         emitRate: 7
         lifeSpan: Logic.EMBER_LIFE_MS
         lifeSpanVariation: Logic.EMBER_LIFE_VARIATION_MS
@@ -161,13 +220,31 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 300 } }
     }
 
+    // The fireflies' halos pulse on this, each a step apart: one animation
+    // for all of them, stopped while none is lit.
+    property real twinkle: 0
+    NumberAnimation on twinkle {
+        from: 0
+        to: 1
+        duration: 1500
+        loops: Animation.Infinite
+        running: scene.count > 0
+        paused: running && scene.asleep
+    }
+
     Item {
         id: orbit
         x: scene.width / 2
         y: scene.height / 2
         opacity: Math.min(1, 2 - scene.spread / 3.5)
 
-        NumberAnimation on rotation { from: 0; to: 360; duration: 14000; loops: Animation.Infinite }
+        NumberAnimation on rotation {
+            from: 0
+            to: 360
+            duration: 14000
+            loops: Animation.Infinite
+            paused: scene.asleep
+        }
 
         Item {
             id: spin
@@ -177,7 +254,7 @@ Item {
                 to: 360
                 duration: 700
                 loops: Animation.Infinite
-                paused: !scene.checking
+                paused: !scene.checking || scene.asleep
             }
 
             Repeater {

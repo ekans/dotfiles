@@ -65,6 +65,11 @@ ShellRoot {
     property int fingerNoMatches: 0
     readonly property int fingerTriesLeft: Math.max(0, Logic.FINGER_TRIES - root.fingerNoMatches)
     property bool capsLock: false
+
+    // Bumped by any key on any output. Every output's scene wakes on it
+    // (LockScene.qml), so they fall asleep and wake together.
+    property int activity: 0
+    function stir() { root.activity += 1; }
     readonly property string clockText: Logic.clockLine(clock.date)
 
     SystemClock {

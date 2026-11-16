@@ -36,6 +36,22 @@ export const EMBER_LIFE_MS = 9000;
 export const EMBER_LIFE_VARIATION_MS = 3000;
 export const PREFILL_EMBERS = 60;
 
+// The scene goes to sleep after SLEEP_MS with no key, no finger and no PAM
+// verdict: the embers stop rising, and BURNOUT_MS later, once the last one
+// has burnt out, nothing on screen moves. Anything that moves makes Qt redraw
+// the whole window every frame, so this is what keeps a lock left for hours
+// from costing a few percent of a core all that time. SLEEP_MS is the one to
+// change.
+export const SLEEP_MS = 20000;
+export const BURNOUT_MS = EMBER_LIFE_MS + EMBER_LIFE_VARIATION_MS + 1000;
+
+// The embers to scatter on waking, after dimmedMs with none rising: as many
+// as have burnt out since.
+export function wakeBurst(dimmedMs) {
+    const burnt = Math.max(0, Math.min(1, dimmedMs / EMBER_LIFE_MS));
+    return Math.round(PREFILL_EMBERS * burnt);
+}
+
 // What a message pam_fprintd sends means. Its strings, from
 // /usr/lib64/security/pam_fprintd.so (the session runs in en_US):
 //

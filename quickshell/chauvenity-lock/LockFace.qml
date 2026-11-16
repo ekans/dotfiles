@@ -45,7 +45,16 @@ Item {
         readOnly: face.checking || face.unlocked || !face.inputEnabled
         onTextEdited: face.lock.edit(input.text)
         onAccepted: face.lock.submit()
-        Keys.onEscapePressed: face.lock.edit("")
+        // Any key wakes the scene, modifiers and dead keys too; it is not
+        // accepted here, so it still types.
+        Keys.onPressed: event => {
+            face.lock.stir();
+            event.accepted = false;
+        }
+        Keys.onEscapePressed: {
+            face.lock.stir();
+            face.lock.edit("");
+        }
     }
 
     // The buffer is the lock's, shared with the other outputs; it is emptied
