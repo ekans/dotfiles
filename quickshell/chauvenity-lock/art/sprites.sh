@@ -3,14 +3,14 @@
 # directory. Each is a 64 px soft round glow: opaque in the middle, fading
 # to nothing at the rim.
 #
-#   glow.png         white, for every particle, tinted there by
-#                    ImageParticle.color, and for the fireflies' white-hot core
-#   halo-ember.png   a firefly's halo, warm
-#   halo-green.png   the same on success
-#   halo-ash.png     the same, cooled, as a firefly leaves
+#   glow.png         white, a firefly's hot core
+#   halo-ember.png   a firefly's halo, warm; also the rising embers
+#   halo-green.png   both of those on success; also the embers that rush up
+#   halo-ash.png     a halo cooled, as a firefly leaves
 #
-# An Image cannot be tinted without an offscreen pass per item, so each halo
-# colour is a file of its own.
+# Every colour is a file of its own because nothing here can be tinted at
+# runtime: an Image needs an offscreen pass per item, and ImageParticle.color
+# never reaches a particle that is already alive.
 #
 #   art/sprites.sh      rerun after changing a colour; needs ImageMagick 7
 set -euo pipefail
