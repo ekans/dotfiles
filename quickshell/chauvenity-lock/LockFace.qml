@@ -42,6 +42,9 @@ Item {
         opacity: 0
         focus: true
         echoMode: TextInput.Password
+        // Qt's own cursor blinks, which redraws the window twice a second
+        // for as long as the lock is up; a delegate cursor does not.
+        cursorDelegate: Item {}
         readOnly: face.checking || face.unlocked || !face.inputEnabled
         onTextEdited: face.lock.edit(input.text)
         onAccepted: face.lock.submit()
