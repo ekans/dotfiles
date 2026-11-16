@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 
 // The login screen: greetd's greeter, drawn as the niri session's lock screen
 // (../chauvenity-lock/LockFace.qml), prototype "01 · same face". The time, a
-// dot per character typed, `ducatore · niri` under them; Tab picks the
+// firefly per character typed, `ducatore · niri` under them; Tab picks the
 // session, Enter logs in.
 //
 // greetd runs it inside a compositor of its own, as the greeter user:
@@ -128,11 +128,11 @@ ShellRoot {
         onTriggered: root.dispatch({ type: "settle" })
     }
 
-    // The green dots a moment, then the session. greetd ends this process
-    // once it has started it: launch() quits Quickshell too.
+    // The green fly-out, then the session. greetd ends this process once it
+    // has started it: launch() quits Quickshell too.
     Timer {
         id: launch
-        interval: 280
+        interval: Lock.EXIT_MS
         onTriggered: {
             const spec = Logic.launchSpec(root.session);
             console.log(`chauvenity-greeter: launching ${spec.command.join(" ")}`);

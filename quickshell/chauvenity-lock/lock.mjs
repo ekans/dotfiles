@@ -11,12 +11,30 @@
 // starts it again.
 export const FINGER_TRIES = 3;
 
-// Dots drawn for the password; a longer one stops growing the row.
-export const MAX_DOTS = 16;
+// Fireflies circling the middle, one per character typed; a longer password
+// stops adding them.
+export const MAX_FIREFLIES = 16;
 
-export function dotCount(length) {
-    return Math.max(0, Math.min(length, MAX_DOTS));
+export function fireflyCount(length) {
+    return Math.max(0, Math.min(length, MAX_FIREFLIES));
 }
+
+// How far from the middle the fireflies circle, in the face's units (1280 ×
+// 800 px): the ring widens as they are added.
+export function ringRadius(count) {
+    return 30 + 3.5 * fireflyCount(count);
+}
+
+// The fly-out on success. The lock lets go, and the greeter starts the
+// session, once it is over.
+export const EXIT_MS = 700;
+
+// The embers rising behind the face live this long, give or take the
+// variation. PREFILL_EMBERS are scattered over the whole screen at once, so
+// that it does not open empty and fill from the bottom over nine seconds.
+export const EMBER_LIFE_MS = 9000;
+export const EMBER_LIFE_VARIATION_MS = 3000;
+export const PREFILL_EMBERS = 60;
 
 // What a message pam_fprintd sends means. Its strings, from
 // /usr/lib64/security/pam_fprintd.so (the session runs in en_US):
@@ -84,7 +102,7 @@ export function fingerText(state, triesLeft) {
     }
 }
 
-// The line under the dots.
+// The line under the fireflies.
 //
 //   state   "idle", "typing", "checking", "wrong", "error" or "unlocked"
 export function passwordText(state) {

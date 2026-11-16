@@ -5,14 +5,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-    FINGER_TRIES, MAX_DOTS, dotCount, fingerEvent, fingerAfter, fingerText, passwordText,
+    FINGER_TRIES, MAX_FIREFLIES, fireflyCount, ringRadius, fingerEvent, fingerAfter, fingerText, passwordText,
     resultName, clockLine, capsLockOn,
 } from "../lock.mjs";
 
-test("dotCount follows the password and stops at the row's length", () => {
-    assert.equal(dotCount(0), 0);
-    assert.equal(dotCount(7), 7);
-    assert.equal(dotCount(40), MAX_DOTS);
+test("fireflyCount follows the password and stops at the most the ring holds", () => {
+    assert.equal(fireflyCount(0), 0);
+    assert.equal(fireflyCount(7), 7);
+    assert.equal(fireflyCount(40), MAX_FIREFLIES);
+});
+
+test("ringRadius widens with every firefly, up to the most the ring holds", () => {
+    assert.ok(ringRadius(1) > ringRadius(0));
+    assert.ok(ringRadius(8) > ringRadius(7));
+    assert.equal(ringRadius(40), ringRadius(MAX_FIREFLIES));
 });
 
 test("fingerEvent reads pam_fprintd's messages", () => {

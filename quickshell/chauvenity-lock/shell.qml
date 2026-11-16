@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
-// The niri session's lock screen: prototype "08 · Just dots" — the time, a
-// dot per character typed, and the fingerprint sensor, live alongside the
+// The niri session's lock screen: prototype "14 · Fireflies" — the time, a
+// firefly per character typed, and the fingerprint sensor, live alongside the
 // password.
 //
 // It is a process of its own, the way swaylock is, rather than part of the
@@ -56,7 +56,7 @@ ShellRoot {
 
     // --- state, shown by LockFace on every output ---------------------------
 
-    // What is typed so far. Shared, so that every output's dots agree.
+    // What is typed so far. Shared, so that every output's fireflies agree.
     property string buffer: ""
     // "idle", "typing", "checking", "wrong", "error" or "unlocked".
     property string passwordState: "idle"
@@ -86,13 +86,13 @@ ShellRoot {
         passwordPam.abort();
         fingerPam.abort();
         fingerRestart.stop();
-        // The fade, then the lock goes.
+        // The fly-out, then the lock goes.
         release.start();
     }
 
     Timer {
         id: release
-        interval: 280
+        interval: Logic.EXIT_MS
         onTriggered: {
             root.buffer = "";
             if (!root.preview)
