@@ -1,3 +1,4 @@
+//@ pragma UseQApplication
 pragma ComponentBehavior: Bound
 
 // chauvenity-os default Quickshell bar for the niri session.
@@ -803,8 +804,8 @@ ShellRoot {
                 }
             }
 
-            // Right: Claude Code usage, walkpad, network, volume, battery,
-            // caffeine, notifications, clock.
+            // Right: Claude Code usage, walkpad, tray, network, volume,
+            // battery, caffeine, notifications, clock.
             Row {
                 id: rightItems
                 anchors.right: parent.right
@@ -828,6 +829,11 @@ ShellRoot {
                     panels: barPanels
                     service: walkpad
                     now: clock.date
+                }
+
+                Tray {
+                    anchors.verticalCenter: parent.verticalCenter
+                    theme: root
                 }
 
                 Network {
