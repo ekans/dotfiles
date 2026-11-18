@@ -1,15 +1,14 @@
 pragma ComponentBehavior: Bound
 
 // What one output shows while the session is locked: the time at the top,
-// a dot per character typed in the middle, the fingerprint under them. Every
-// output shows the same, from shell.qml's state; the one niri gives the
-// keyboard to types into it.
+// a firefly per character typed circling the middle (LockScene.qml), the
+// fingerprint under them. Every output shows the same, from shell.qml's
+// state; the one niri gives the keyboard to types into it.
 //
-// Prototype "08 · Just dots".
+// Prototype "14 · Fireflies".
 //
 // The login greeter (../chauvenity-greeter) draws this same face, with its own
-// state object as `lock`: one that never has a fingerprint ("unavailable"), and
-// that keeps the dots on screen, green, while the session starts.
+// state object as `lock`: one that never has a fingerprint ("unavailable").
 
 import QtQuick
 import QtQuick.Shapes
@@ -32,19 +31,28 @@ Item {
     readonly property string fingerState: face.lock.fingerState
     readonly property bool checking: face.passwordState === "checking"
     readonly property bool unlocked: face.passwordState === "unlocked"
-    readonly property int dots: Logic.dotCount(face.lock.buffer.length)
 
     // Typing goes to this, unseen, so that dead keys, compose and the layout
-    // are Qt's business; the dots follow its length.
+    // are Qt's business; the fireflies follow its length.
     TextInput {
         id: input
         opacity: 0
         focus: true
         echoMode: TextInput.Password
+        // Qt's own cursor blinks, which redraws the window twice a second
+        // for as long as the lock is up; a delegate cursor does not.
+        cursorDelegate: Item {}
         readOnly: face.checking || face.unlocked || !face.inputEnabled
         onTextEdited: face.lock.edit(input.text)
         onAccepted: face.lock.submit()
-        Keys.onEscapePressed: face.lock.edit("")
+        Keys.onPressed: event => {
+            face.lock.noteKeyPress();
+            event.accepted = false;
+        }
+        Keys.onEscapePressed: {
+            face.lock.noteKeyPress();
+            face.lock.edit("");
+        }
     }
 
     // The buffer is the lock's, shared with the other outputs; it is emptied
@@ -60,6 +68,12 @@ Item {
     // The keyboard comes back here whenever this output's surface has it.
     Component.onCompleted: input.forceActiveFocus()
 
+    LockScene {
+        anchors.fill: parent
+        lock: face.lock
+        u: face.u
+    }
+
     Item {
         id: content
         anchors.fill: parent
@@ -74,103 +88,6 @@ Item {
             font.family: "JetBrains Mono"
             font.pixelSize: Math.round(16 * face.u)
             font.letterSpacing: 2.4 * face.u
-        }
-
-        // --- password -------------------------------------------------------
-
-        Item {
-            id: middle
-            anchors.centerIn: parent
-            width: dotRow.width
-            height: 16 * face.u
-
-            property real shake: 0
-            transform: Translate { x: middle.shake }
-
-            // Nothing typed yet: one ring, breathing.
-            Rectangle {
-                id: ring
-                anchors.centerIn: parent
-                width: 16 * face.u
-                height: width
-                radius: width / 2
-                color: face.fingerState === "match" ? face.lock.goodColor : "transparent"
-                border.width: Math.max(2, 2 * face.u)
-                border.color: face.fingerState === "match" ? face.lock.goodColor
-                    : face.passwordState === "wrong" || face.passwordState === "error" ? face.lock.badColor
-                    : face.lock.dimColor
-                visible: face.dots === 0 && !face.checking
-
-                SequentialAnimation {
-                    running: ring.visible && face.passwordState === "idle" && face.fingerState !== "match"
-                    loops: Animation.Infinite
-                    onRunningChanged: if (!running) { ring.scale = 1; ring.opacity = 1; }
-                    ParallelAnimation {
-                        NumberAnimation { target: ring; property: "scale"; to: 1.6; duration: 1500; easing.type: Easing.InOutSine }
-                        NumberAnimation { target: ring; property: "opacity"; to: 0.3; duration: 1500; easing.type: Easing.InOutSine }
-                    }
-                    ParallelAnimation {
-                        NumberAnimation { target: ring; property: "scale"; to: 1; duration: 1500; easing.type: Easing.InOutSine }
-                        NumberAnimation { target: ring; property: "opacity"; to: 1; duration: 1500; easing.type: Easing.InOutSine }
-                    }
-                }
-            }
-
-            // While PAM checks: the dots ride a wave, left to right.
-            property real wave: 0
-            NumberAnimation on wave {
-                from: 0
-                to: 1
-                duration: 800
-                loops: Animation.Infinite
-                running: face.checking
-            }
-
-            Row {
-                id: dotRow
-                anchors.centerIn: parent
-                spacing: 16 * face.u
-
-                Repeater {
-                    model: face.dots
-
-                    Rectangle {
-                        id: dot
-                        required property int index
-                        width: 16 * face.u
-                        height: width
-                        radius: width / 2
-                        color: face.unlocked || face.fingerState === "match" ? face.lock.goodColor
-                            : face.checking ? face.lock.accentColor
-                            : face.lock.fgColor
-                        transform: Translate {
-                            y: face.checking
-                                ? -14 * face.u * Math.max(0, Math.sin(2 * Math.PI * (middle.wave - dot.index * 0.08)))
-                                : 0
-                        }
-                        scale: 0
-                        Component.onCompleted: pop.start()
-                        NumberAnimation {
-                            id: pop
-                            target: dot
-                            property: "scale"
-                            to: 1
-                            duration: 220
-                            easing.type: Easing.OutBack
-                            easing.overshoot: 2.2
-                        }
-                    }
-                }
-            }
-
-            SequentialAnimation {
-                id: shakeAnimation
-                NumberAnimation { target: middle; property: "shake"; to: -8 * face.u; duration: 50 }
-                NumberAnimation { target: middle; property: "shake"; to: 8 * face.u; duration: 80 }
-                NumberAnimation { target: middle; property: "shake"; to: -6 * face.u; duration: 80 }
-                NumberAnimation { target: middle; property: "shake"; to: 4 * face.u; duration: 80 }
-                NumberAnimation { target: middle; property: "shake"; to: 0; duration: 60 }
-            }
         }
 
         Text {
@@ -257,10 +174,6 @@ Item {
         }
     }
 
-    onPasswordStateChanged: {
-        if (face.passwordState === "wrong" || face.passwordState === "error")
-            shakeAnimation.restart();
-    }
     onFingerStateChanged: {
         if (face.fingerState === "nomatch")
             fingerShake.restart();

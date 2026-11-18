@@ -11,11 +11,35 @@
 // starts it again.
 export const FINGER_TRIES = 3;
 
-// Dots drawn for the password; a longer one stops growing the row.
-export const MAX_DOTS = 16;
+// Fireflies circling the middle, one per character typed; a longer password
+// stops adding them.
+export const MAX_FIREFLIES = 16;
 
-export function dotCount(length) {
-    return Math.max(0, Math.min(length, MAX_DOTS));
+export function fireflyCount(length) {
+    return Math.max(0, Math.min(length, MAX_FIREFLIES));
+}
+
+export function ringRadius(count) {
+    return 30 + 3.5 * fireflyCount(count);
+}
+
+export const EXIT_MS = 700;
+
+export const EMBER_LIFE_MS = 9000;
+export const EMBER_LIFE_VARIATION_MS = 3000;
+export const PREFILL_EMBERS = 60;
+
+// The scene goes to sleep after SLEEP_MS with no key, no finger and no PAM
+// verdict: the embers stop rising, and BURNOUT_MS later, once the last one
+// has burnt out, nothing on screen moves. Anything that moves makes Qt redraw
+// the whole window every frame, so this is what keeps a lock left for hours
+// from costing a few percent of a core all that time.
+export const SLEEP_MS = 20000;
+export const BURNOUT_MS = EMBER_LIFE_MS + EMBER_LIFE_VARIATION_MS + 1000;
+
+export function wakeBurst(dimmedMs) {
+    const burnt = Math.max(0, Math.min(1, dimmedMs / EMBER_LIFE_MS));
+    return Math.round(PREFILL_EMBERS * burnt);
 }
 
 // What a message pam_fprintd sends means. Its strings, from
@@ -84,7 +108,7 @@ export function fingerText(state, triesLeft) {
     }
 }
 
-// The line under the dots.
+// The line under the fireflies.
 //
 //   state   "idle", "typing", "checking", "wrong", "error" or "unlocked"
 export function passwordText(state) {
