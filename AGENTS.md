@@ -18,6 +18,12 @@ tokens and work data out of it.
 
 - Unit tests: `node --test quickshell/<name>/tests/`.
 - niri config: `niri validate -c niri/config.kdl`.
+- QML: `quickshell/qmllint.sh [DIR...]` runs chauvenity-os's qmllint check in
+  the same Fedora container (podman). By default it lints `chauvenity-lock`
+  and `chauvenity-greeter`, which chauvenity-os ships, and its CI fails on any
+  line printed under `FAIL`. Run it before a lock or greeter change is synced
+  there. The other configs don't pass, because the image's Quickshell lacks
+  types they use.
 - Quickshell reloads on a `.qml` edit, not on a `.mjs` edit. After changing a
   `.mjs` file, restart the instance.
 - The walkpad helper's tests:

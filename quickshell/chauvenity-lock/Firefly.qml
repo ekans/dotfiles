@@ -11,15 +11,20 @@ Item {
     id: fly
 
     required property int index
-    required property LockScene scene
+    required property int count
+    required property real u
+    required property real twinkle
+    required property real spread
+    required property bool wrong
+    required property bool unlocked
 
-    readonly property int ringSize: fly.index < fly.scene.count ? fly.scene.count : 0
+    readonly property int ringSize: fly.index < fly.count ? fly.count : 0
     property bool placed: false
     property real angle: 0
     property real ring: 0
     property real grow: 1
     property real drop: 0
-    readonly property real pulse: 0.7 + 0.3 * Math.sin(2 * Math.PI * (fly.scene.twinkle + fly.index * 0.38))
+    readonly property real pulse: 0.7 + 0.3 * Math.sin(2 * Math.PI * (fly.twinkle + fly.index * 0.38))
 
     Behavior on angle { id: glideAngle; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
     Behavior on ring { id: glideRing; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
@@ -47,15 +52,15 @@ Item {
 
     NumberAnimation { id: arrive; target: fly; property: "grow"; from: 0; to: 1; duration: 450; easing.type: Easing.OutBack }
 
-    x: Math.cos(fly.angle) * fly.ring * fly.scene.u * fly.grow * fly.scene.spread
-    y: Math.sin(fly.angle) * fly.ring * fly.scene.u * fly.grow * fly.scene.spread + fly.drop
+    x: Math.cos(fly.angle) * fly.ring * fly.u * fly.grow * fly.spread
+    y: Math.sin(fly.angle) * fly.ring * fly.u * fly.grow * fly.spread + fly.drop
     opacity: 0
 
     Image {
         id: halo
         x: -width / 2
         y: -height / 2
-        width: 30 * fly.scene.u
+        width: 30 * fly.u
         height: width
         source: "art/halo-ash.png"
         opacity: 0.6 * fly.pulse
@@ -65,13 +70,13 @@ Item {
         id: core
         x: -width / 2
         y: -height / 2
-        width: 9 * fly.scene.u
+        width: 9 * fly.u
         height: width
         source: "art/glow.png"
     }
 
-    state: fly.ringSize === 0 ? (fly.scene.wrong ? "sink" : "out")
-        : fly.scene.unlocked ? "free" : "lit"
+    state: fly.ringSize === 0 ? (fly.wrong ? "sink" : "out")
+        : fly.unlocked ? "free" : "lit"
 
     states: [
         State {
@@ -85,7 +90,7 @@ Item {
         State { name: "out" },
         State {
             name: "sink"
-            PropertyChanges { fly.drop: 90 * fly.scene.u }
+            PropertyChanges { fly.drop: 90 * fly.u }
         }
     ]
 
