@@ -223,7 +223,12 @@ Item {
                 model: Logic.MAX_FIREFLIES
 
                 Firefly {
-                    scene: scene
+                    count: scene.count
+                    u: scene.u
+                    twinkle: scene.twinkle
+                    spread: scene.spread
+                    wrong: scene.wrong
+                    unlocked: scene.unlocked
                 }
             }
         }
