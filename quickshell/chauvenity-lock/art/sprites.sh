@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Draws the lock screen's sprites (../LockScene.qml, ../Firefly.qml) into this
-# directory. Each is a 64 px soft round glow: opaque in the middle, fading
-# to nothing at the rim.
-#
-#   glow.png         white, a firefly's hot core
-#   halo-ember.png   a firefly's halo, warm; also the rising embers
-#   halo-green.png   both of those on success; also the embers that rush up
-#   halo-ash.png     a halo cooled, as a firefly leaves
-#
 # Every colour is a file of its own because nothing here can be tinted at
 # runtime: an Image needs an offscreen pass per item, and ImageParticle.color
 # never reaches a particle that is already alive.

@@ -19,19 +19,12 @@ export function fireflyCount(length) {
     return Math.max(0, Math.min(length, MAX_FIREFLIES));
 }
 
-// How far from the middle the fireflies circle, in the face's units (1280 ×
-// 800 px): the ring widens as they are added.
 export function ringRadius(count) {
     return 30 + 3.5 * fireflyCount(count);
 }
 
-// The fly-out on success. The lock lets go, and the greeter starts the
-// session, once it is over.
 export const EXIT_MS = 700;
 
-// The embers rising behind the face live this long, give or take the
-// variation. PREFILL_EMBERS are scattered over the whole screen at once, so
-// that it does not open empty and fill from the bottom over nine seconds.
 export const EMBER_LIFE_MS = 9000;
 export const EMBER_LIFE_VARIATION_MS = 3000;
 export const PREFILL_EMBERS = 60;
@@ -40,13 +33,10 @@ export const PREFILL_EMBERS = 60;
 // verdict: the embers stop rising, and BURNOUT_MS later, once the last one
 // has burnt out, nothing on screen moves. Anything that moves makes Qt redraw
 // the whole window every frame, so this is what keeps a lock left for hours
-// from costing a few percent of a core all that time. SLEEP_MS is the one to
-// change.
+// from costing a few percent of a core all that time.
 export const SLEEP_MS = 20000;
 export const BURNOUT_MS = EMBER_LIFE_MS + EMBER_LIFE_VARIATION_MS + 1000;
 
-// The embers to scatter on waking, after dimmedMs with none rising: as many
-// as have burnt out since.
 export function wakeBurst(dimmedMs) {
     const burnt = Math.max(0, Math.min(1, dimmedMs / EMBER_LIFE_MS));
     return Math.round(PREFILL_EMBERS * burnt);

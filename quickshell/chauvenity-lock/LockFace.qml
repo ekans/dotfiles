@@ -9,9 +9,6 @@ pragma ComponentBehavior: Bound
 //
 // The login greeter (../chauvenity-greeter) draws this same face, with its own
 // state object as `lock`: one that never has a fingerprint ("unavailable").
-//
-// The scene sits outside `content`, which fades out on unlock faster than the
-// fireflies fly away.
 
 import QtQuick
 import QtQuick.Shapes
@@ -48,8 +45,6 @@ Item {
         readOnly: face.checking || face.unlocked || !face.inputEnabled
         onTextEdited: face.lock.edit(input.text)
         onAccepted: face.lock.submit()
-        // Any key wakes the scene, modifiers and dead keys too; it is not
-        // accepted here, so it still types.
         Keys.onPressed: event => {
             face.lock.stir();
             event.accepted = false;

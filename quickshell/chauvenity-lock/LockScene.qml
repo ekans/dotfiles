@@ -1,38 +1,5 @@
 pragma ComponentBehavior: Bound
 
-// What moves behind LockFace's words, prototype "14 · Fireflies": warm embers
-// rising from the bottom of the screen, and a firefly (Firefly.qml) per
-// character typed, circling the middle on a ring that widens as they come.
-//
-//   nothing typed   one faint ember glows in the middle
-//   backspace       the last firefly cools and fades where it is
-//   checking        the ring spins fast
-//   wrong           the fireflies sink and fade
-//   unlocked        everything turns green and flies outward, and green
-//                   embers rush up from the bottom, for EXIT_MS
-//
-// It falls asleep after SLEEP_MS (lock.mjs) with nothing happening:
-//
-//   awake     the embers rise, the ring turns
-//   dimming   no new embers; the live ones rise until they burn out
-//   asleep    BURNOUT_MS later: the particles are paused, the ring stopped,
-//             and nothing on screen moves, so Qt stops redrawing the window
-//
-// A key on any output, the fingerprint and a PAM verdict wake it at once,
-// with embers scattered back over the screen. They reach it through the
-// shell's root, which every output's scene reads, so all of them wake
-// together.
-//
-// The embers are tinted by their sprite rather than by ImageParticle.color:
-// a particle keeps the colour of the first painter that drew it, so a colour
-// change never reaches the embers already alive. On success a second painter
-// draws the same embers with the green sprite and fades in over the first.
-// (A GroupGoal moving them to a green group instead crashed Qt 6.)
-//
-// The push outward is off until then: Qt's particle cost follows the live
-// particles and the affectors, so the embers drift on their emitters' own
-// velocity and acceleration.
-
 import QtQuick
 import QtQuick.Particles
 import "lock.mjs" as Logic
@@ -40,7 +7,6 @@ import "lock.mjs" as Logic
 Item {
     id: scene
 
-    // shell.qml's root, or the greeter's: the state LockFace shows.
     required property var lock
     property real u: 1
 
@@ -50,7 +16,6 @@ Item {
     readonly property bool wrong: scene.passwordState === "wrong" || scene.passwordState === "error"
     readonly property int count: Logic.fireflyCount(scene.lock.buffer.length)
 
-    // 0 until success, then 1 over EXIT_MS: the ring flies apart and fades.
     property real flight: 0
     readonly property real spread: 1 + 6 * scene.flight
 
@@ -64,9 +29,6 @@ Item {
         NumberAnimation { property: "flight"; duration: Logic.EXIT_MS; easing.type: Easing.InCubic }
     }
 
-    // --- sleep --------------------------------------------------------------
-
-    // "awake", "dimming" or "asleep".
     property string sleep: "awake"
     readonly property bool awake: scene.sleep === "awake"
     readonly property bool asleep: scene.sleep === "asleep"
@@ -85,8 +47,6 @@ Item {
         id: doze
         interval: Logic.SLEEP_MS
         running: true
-        // While PAM checks, the ring keeps spinning; its verdict wakes the
-        // scene and starts the count again.
         onTriggered: {
             if (scene.checking)
                 return;
@@ -108,13 +68,16 @@ Item {
         function onFingerStateChanged() { scene.wake(); }
     }
 
-    // --- embers -------------------------------------------------------------
-
     ParticleSystem {
         id: system
         paused: scene.asleep
     }
 
+    // The embers are tinted by their sprite rather than by ImageParticle.color:
+    // a particle keeps the colour of the first painter that drew it, so a colour
+    // change never reaches the embers already alive. On success a second painter
+    // draws the same embers with the green sprite and fades in over the first.
+    // (A GroupGoal moving them to a green group instead crashed Qt 6.)
     ImageParticle {
         system: system
         groups: ["dust"]
@@ -194,6 +157,9 @@ Item {
         velocity: AngleDirection { angle: 270; angleVariation: 8; magnitude: 700 * scene.u; magnitudeVariation: 200 * scene.u }
     }
 
+    // Off until success: Qt's particle cost follows the live particles and the
+    // affectors, so until then the embers drift on their emitters' own
+    // velocity and acceleration.
     Attractor {
         system: system
         groups: ["dust"]
@@ -209,8 +175,6 @@ Item {
     onUnlockedChanged: if (scene.unlocked) rush.burst(140)
     Component.onCompleted: prefill.burst(Logic.PREFILL_EMBERS)
 
-    // --- fireflies ----------------------------------------------------------
-
     Image {
         anchors.centerIn: parent
         width: 24 * scene.u
@@ -220,8 +184,6 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 300 } }
     }
 
-    // The fireflies' halos pulse on this, each a step apart: one animation
-    // for all of them, stopped while none is lit.
     property real twinkle: 0
     NumberAnimation on twinkle {
         from: 0

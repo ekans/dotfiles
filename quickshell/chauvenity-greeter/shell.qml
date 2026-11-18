@@ -50,8 +50,6 @@ ShellRoot {
     readonly property int fingerTriesLeft: 0
     property bool capsLock: false
 
-    // Bumped by any key on any output. Every output's scene wakes on it
-    // (LockScene.qml), so they fall asleep and wake together.
     property int activity: 0
     function stir() { root.activity += 1; }
     readonly property string clockText: Lock.clockLine(clock.date)
