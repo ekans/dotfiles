@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 
 // Quickshell 0.3.2 keeps a binding even when it is assigned to while a
 // Behavior is on the property, which is why angle and ring are assigned
-// from onPlaceChanged and never bound.
+// from onRingSizeChanged and never bound.
 
 import QtQuick
 import "lock.mjs" as Logic
@@ -13,7 +13,7 @@ Item {
     required property int index
     required property LockScene scene
 
-    readonly property int place: fly.index < fly.scene.count ? fly.scene.count : 0
+    readonly property int ringSize: fly.index < fly.scene.count ? fly.scene.count : 0
     property bool placed: false
     property real angle: 0
     property real ring: 0
@@ -24,16 +24,25 @@ Item {
     Behavior on angle { id: glideAngle; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
     Behavior on ring { id: glideRing; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
 
-    onPlaceChanged: {
-        if (fly.place > 0) {
-            glideAngle.enabled = glideRing.enabled = fly.placed;
-            fly.angle = fly.index / fly.place * 2 * Math.PI;
-            fly.ring = Logic.ringRadius(fly.place);
-            glideAngle.enabled = glideRing.enabled = true;
-            if (!fly.placed)
-                arrive.restart();
+    function takeSlot() {
+        fly.angle = fly.index / fly.ringSize * 2 * Math.PI;
+        fly.ring = Logic.ringRadius(fly.ringSize);
+    }
+
+    function jumpToSlot() {
+        glideAngle.enabled = glideRing.enabled = false;
+        fly.takeSlot();
+        glideAngle.enabled = glideRing.enabled = true;
+    }
+
+    onRingSizeChanged: {
+        if (fly.ringSize > 0 && fly.placed) {
+            fly.takeSlot();
+        } else if (fly.ringSize > 0) {
+            fly.jumpToSlot();
+            arrive.restart();
         }
-        fly.placed = fly.place > 0;
+        fly.placed = fly.ringSize > 0;
     }
 
     NumberAnimation { id: arrive; target: fly; property: "grow"; from: 0; to: 1; duration: 450; easing.type: Easing.OutBack }
@@ -61,7 +70,7 @@ Item {
         source: "art/glow.png"
     }
 
-    state: fly.place === 0 ? (fly.scene.wrong ? "sink" : "out")
+    state: fly.ringSize === 0 ? (fly.scene.wrong ? "sink" : "out")
         : fly.scene.unlocked ? "free" : "lit"
 
     states: [

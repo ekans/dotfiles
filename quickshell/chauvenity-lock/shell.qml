@@ -66,8 +66,8 @@ ShellRoot {
     readonly property int fingerTriesLeft: Math.max(0, Logic.FINGER_TRIES - root.fingerNoMatches)
     property bool capsLock: false
 
-    property int activity: 0
-    function stir() { root.activity += 1; }
+    property int keyPresses: 0
+    function noteKeyPress() { root.keyPresses += 1; }
     readonly property string clockText: Logic.clockLine(clock.date)
 
     SystemClock {

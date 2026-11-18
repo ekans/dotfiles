@@ -46,11 +46,11 @@ Item {
         onTextEdited: face.lock.edit(input.text)
         onAccepted: face.lock.submit()
         Keys.onPressed: event => {
-            face.lock.stir();
+            face.lock.noteKeyPress();
             event.accepted = false;
         }
         Keys.onEscapePressed: {
-            face.lock.stir();
+            face.lock.noteKeyPress();
             face.lock.edit("");
         }
     }

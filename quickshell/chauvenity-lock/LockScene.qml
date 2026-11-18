@@ -7,6 +7,8 @@ import "lock.mjs" as Logic
 Item {
     id: scene
 
+    enum Sleep { Awake, Dimming, Asleep }
+
     required property var lock
     property real u: 1
 
@@ -29,15 +31,15 @@ Item {
         NumberAnimation { property: "flight"; duration: Logic.EXIT_MS; easing.type: Easing.InCubic }
     }
 
-    property string sleep: "awake"
-    readonly property bool awake: scene.sleep === "awake"
-    readonly property bool asleep: scene.sleep === "asleep"
+    property int sleep: LockScene.Awake
+    readonly property bool awake: scene.sleep === LockScene.Awake
+    readonly property bool asleep: scene.sleep === LockScene.Asleep
     property real dimmedAt: 0
 
     function wake() {
         if (!scene.awake) {
             const dimmed = Date.now() - scene.dimmedAt;
-            scene.sleep = "awake";
+            scene.sleep = LockScene.Awake;
             prefill.burst(Logic.wakeBurst(dimmed));
         }
         doze.restart();
@@ -46,24 +48,22 @@ Item {
     Timer {
         id: doze
         interval: Logic.SLEEP_MS
-        running: true
+        running: !scene.checking
         onTriggered: {
-            if (scene.checking)
-                return;
-            scene.sleep = "dimming";
+            scene.sleep = LockScene.Dimming;
             scene.dimmedAt = Date.now();
         }
     }
 
     Timer {
         interval: Logic.BURNOUT_MS
-        running: scene.sleep === "dimming"
-        onTriggered: scene.sleep = "asleep"
+        running: scene.sleep === LockScene.Dimming
+        onTriggered: scene.sleep = LockScene.Asleep
     }
 
     Connections {
         target: scene.lock
-        function onActivityChanged() { scene.wake(); }
+        function onKeyPressesChanged() { scene.wake(); }
         function onPasswordStateChanged() { scene.wake(); }
         function onFingerStateChanged() { scene.wake(); }
     }
