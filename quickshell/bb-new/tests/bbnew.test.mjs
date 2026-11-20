@@ -6,6 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
     DEFAULTS,
+    PROVIDERS,
+    DEFAULT_PROVIDER,
     PERMISSIONS,
     FALLBACK_MODELS,
     NO_PROJECT,
@@ -13,6 +15,12 @@ import {
     parseProjects,
     parseFocusedOutput,
     findModel,
+    findProvider,
+    providerName,
+    nextProvider,
+    modelsOrFallback,
+    mergeListedModels,
+    spawnBlock,
     findProject,
     modelName,
     projectName,
@@ -54,6 +62,13 @@ const MODELS_JSON = JSON.stringify([
     },
 ]);
 
+// Trimmed from `bb provider models acp-vibe --json`: no claude-* family, so
+// no aliases, and no listed efforts.
+const VIBE_MODELS_JSON = JSON.stringify([
+    { id: "mistral-large-4-0-3", model: "mistral-large-4-0-3", displayName: "Mistral Large 4", supportedReasoningEfforts: [], defaultReasoningEffort: "medium", isDefault: true },
+    { id: "glm-5-3", model: "glm-5-3", displayName: "GLM-5.3 (Mistral Hosted)", supportedReasoningEfforts: [], defaultReasoningEffort: "medium" },
+]);
+
 // Trimmed from `bb project list --json`.
 const PROJECTS_JSON = JSON.stringify([
     { id: "proj_p7uxxsbccn", kind: "standard", name: "chauvenity-os" },
@@ -64,6 +79,7 @@ const PROJECTS_JSON = JSON.stringify([
 ]);
 
 const models = parseModels(MODELS_JSON);
+const vibeModels = parseModels(VIBE_MODELS_JSON);
 const projects = parseProjects(PROJECTS_JSON);
 const opus = findModel(models, "claude-opus-5-5");
 const sonnet = findModel(models, "claude-sonnet-5-5");
@@ -95,6 +111,56 @@ test("parseModels takes {models: [...]}, plain effort names, and ignores junk", 
     assert.deepEqual(parsed, [{ id: "m", name: "m", efforts: ["low", "high"], defaultEffort: "" }]);
     assert.deepEqual(parseModels("not json"), []);
     assert.deepEqual(parseModels(""), []);
+});
+
+test("parseModels gives vibe's models no aliases and keeps their empty efforts", () => {
+    assert.deepEqual(vibeModels.map(m => m.id), ["mistral-large-4-0-3", "glm-5-3"]);
+    assert.deepEqual(vibeModels[0], { id: "mistral-large-4-0-3", name: "Mistral Large 4", efforts: [], defaultEffort: "medium" });
+});
+
+test("the providers offered are claude-code and acp-vibe, claude-code first", () => {
+    assert.deepEqual(PROVIDERS.map(p => p.id), ["claude-code", "acp-vibe"]);
+    assert.equal(DEFAULT_PROVIDER, "claude-code");
+    assert.equal(DEFAULTS.provider, DEFAULT_PROVIDER);
+    assert.equal(findProvider("acp-vibe").name, "vibe");
+    assert.equal(findProvider("cursor"), null);
+    assert.equal(providerName("claude-code"), "Claude Code");
+    assert.equal(providerName("acp-vibe"), "vibe");
+    assert.equal(providerName("cursor"), "cursor");
+});
+
+test("nextProvider cycles the providers both ways, starting over from an unknown one", () => {
+    assert.equal(nextProvider("claude-code", 1), "acp-vibe");
+    assert.equal(nextProvider("acp-vibe", 1), "claude-code");
+    assert.equal(nextProvider("acp-vibe", -1), "claude-code");
+    assert.equal(nextProvider("claude-code", -1), "acp-vibe");
+    assert.equal(nextProvider("cursor", 1), "claude-code");
+});
+
+test("modelsOrFallback reads the listed models per provider, the fallback for the default one only", () => {
+    assert.deepEqual(modelsOrFallback({}, "claude-code"), FALLBACK_MODELS);
+    assert.deepEqual(modelsOrFallback({}, "acp-vibe"), []);
+    assert.deepEqual(modelsOrFallback({ "acp-vibe": vibeModels }, "acp-vibe"), vibeModels);
+    assert.deepEqual(modelsOrFallback({ "acp-vibe": [] }, "acp-vibe"), []);
+    assert.deepEqual(modelsOrFallback(null, "claude-code"), FALLBACK_MODELS);
+});
+
+test("mergeListedModels stores an answer under the provider it was asked for, never the current one", () => {
+    const byProvider = { "claude-code": models };
+    const merged = mergeListedModels(byProvider, "acp-vibe", vibeModels);
+    assert.notEqual(merged, byProvider);
+    assert.deepEqual(merged["acp-vibe"], vibeModels);
+    assert.deepEqual(merged["claude-code"], models);
+    // Already there: the same object back, so nothing is rewritten.
+    assert.equal(mergeListedModels(merged, "acp-vibe", vibeModels), merged);
+    assert.deepEqual(mergeListedModels(null, "acp-vibe", vibeModels)["acp-vibe"], vibeModels);
+});
+
+test("spawnBlock refuses to spawn before the provider's list arrives, and for a foreign model", () => {
+    assert.equal(spawnBlock(vibeModels, "acp-vibe", "mistral-large-4-0-3"), "");
+    assert.equal(spawnBlock(FALLBACK_MODELS, "claude-code", "opus"), "");
+    assert.match(spawnBlock([], "acp-vibe", "opus"), /bb has not listed vibe's models yet/);
+    assert.match(spawnBlock(vibeModels, "acp-vibe", "opus"), /unknown model "opus"; one of mistral-large-4-0-3, glm-5-3/);
 });
 
 test("the fallback model has the defaults' model and effort", () => {
@@ -154,12 +220,25 @@ test("effortFor keeps an effort the model takes, else its default, else its firs
 test("normalize fits the settings to what bb lists", () => {
     assert.deepEqual(normalize(DEFAULTS, models, projects), DEFAULTS);
     assert.deepEqual(normalize({ model: "claude-sonnet-5-5", effort: "xhigh", project: "proj_kmyjbmui8h" }, models, projects),
-        { model: "claude-sonnet-5-5", effort: "medium", permission: "auto", project: "proj_kmyjbmui8h", poteto: false });
+        { provider: "claude-code", model: "claude-sonnet-5-5", effort: "medium", permission: "auto", project: "proj_kmyjbmui8h", poteto: false });
     // A model bb dropped: its first one.
     assert.equal(normalize({ model: "claude-gone", effort: "high", project: "" }, models, projects).model, "opus");
     // A project bb dropped: no project; before bb answers, it stays.
     assert.equal(normalize({ model: "claude-opus-5-5", effort: "high", project: "proj_gone" }, models, projects).project, "");
     assert.equal(normalize({ model: "claude-opus-5-5", effort: "high", project: "proj_gone" }, models, []).project, "proj_gone");
+});
+
+test("normalize keeps a provider offered and puts the default for any other", () => {
+    assert.equal(normalize({ provider: "acp-vibe", model: "opus", effort: "high", project: "" }, models, projects).provider, "acp-vibe");
+    assert.equal(normalize({ provider: "cursor", model: "opus", effort: "high", project: "" }, models, projects).provider, "claude-code");
+    assert.equal(normalize({ model: "opus", effort: "high", project: "" }, models, projects).provider, "claude-code");
+});
+
+test("normalize moves the model and effort to the provider's own models", () => {
+    assert.deepEqual(normalize({ provider: "acp-vibe", model: "opus", effort: "high", permission: "auto", project: "", poteto: false }, vibeModels, projects),
+        { provider: "acp-vibe", model: "mistral-large-4-0-3", effort: "high", permission: "auto", project: "", poteto: false });
+    assert.deepEqual(normalize({ provider: "acp-vibe", model: "glm-5-3", effort: "max", project: "" }, vibeModels, projects),
+        { provider: "acp-vibe", model: "glm-5-3", effort: "max", permission: "auto", project: "", poteto: false });
 });
 
 test("normalize keeps a permission mode bb has, and puts auto for any other", () => {
@@ -170,9 +249,10 @@ test("normalize keeps a permission mode bb has, and puts auto for any other", ()
 });
 
 test("changes tells each setting that is not the default", () => {
-    assert.deepEqual(changes(DEFAULTS, DEFAULTS), { model: false, effort: false, permission: false, project: false, poteto: false });
-    assert.deepEqual(changes({ model: DEFAULTS.model, effort: "max", permission: "full", project: "proj_x", poteto: false }, DEFAULTS), { model: false, effort: true, permission: true, project: true, poteto: false });
-    assert.equal(changes({ model: "opus", effort: "high", project: "", poteto: true }, DEFAULTS).poteto, true);
+    assert.deepEqual(changes(DEFAULTS, DEFAULTS), { provider: false, model: false, effort: false, permission: false, project: false, poteto: false });
+    assert.deepEqual(changes({ provider: "acp-vibe", model: DEFAULTS.model, effort: "max", permission: "full", project: "proj_x", poteto: false }, DEFAULTS),
+        { provider: true, model: false, effort: true, permission: true, project: true, poteto: false });
+    assert.equal(changes({ provider: "claude-code", model: "opus", effort: "high", project: "", poteto: true }, DEFAULTS).poteto, true);
 });
 
 test("filterProjects: no project first, prefix matches before the rest", () => {
@@ -200,6 +280,14 @@ test("spawnCommand leaves the environment of a project to bb", () => {
     assert.deepEqual(command.slice(-3), ["--project", "proj_kmyjbmui8h", "--prompt=-v\nsecond line"]);
     assert.ok(!command.includes("--environment-provider"));
     assert.equal(command[command.indexOf("--permission-mode") + 1], "full");
+});
+
+test("spawnCommand sends the provider picked", () => {
+    const command = spawnCommand("bb", { provider: "acp-vibe", model: "mistral-large-4-0-3", effort: "medium", permission: "auto", project: "" }, "fix it");
+    assert.deepEqual(command.slice(0, 8), ["bb", "thread", "spawn", "--json", "--provider", "acp-vibe",
+        "--model", "mistral-large-4-0-3"]);
+    assert.equal(command[command.indexOf("--reasoning-level") + 1], "medium");
+    assert.equal(spawnCommand("bb", { model: "opus", effort: "high", permission: "auto", project: "" }, "fix it")[5], "claude-code");
 });
 
 test("spawnCommand sends the prompt as given, the poteto prefix with the rest", () => {
@@ -268,6 +356,10 @@ test("parseSpawn reads the thread id, or bb's error", () => {
 });
 
 test("checkDefault takes ids or names and refuses what bb does not list", () => {
+    assert.deepEqual(checkDefault("provider", "vibe", models, projects, ""), { value: "acp-vibe", error: "" });
+    assert.deepEqual(checkDefault("provider", "acp-vibe", models, projects, ""), { value: "acp-vibe", error: "" });
+    assert.deepEqual(checkDefault("provider", "Claude Code", models, projects, ""), { value: "claude-code", error: "" });
+    assert.match(checkDefault("provider", "cursor", models, projects, "").error, /unknown provider "cursor"; one of claude-code, acp-vibe/);
     assert.deepEqual(checkDefault("model", "Sonnet 5.5", models, projects, ""), { value: "claude-sonnet-5-5", error: "" });
     assert.deepEqual(checkDefault("model", "claude-opus-5-5", models, projects, ""), { value: "claude-opus-5-5", error: "" });
     assert.deepEqual(checkDefault("model", "Haiku", models, projects, ""), { value: "haiku", error: "" });
@@ -279,7 +371,7 @@ test("checkDefault takes ids or names and refuses what bb does not list", () => 
     assert.deepEqual(checkDefault("project", "none", models, projects, ""), { value: "", error: "" });
     assert.deepEqual(checkDefault("project", "No project", models, projects, ""), { value: "", error: "" });
     assert.match(checkDefault("project", "nope", models, projects, "").error, /unknown project "nope"/);
-    assert.match(checkDefault("colour", "red", models, projects, "").error, /unknown setting "colour"; model, effort, permission, project or poteto/);
+    assert.match(checkDefault("colour", "red", models, projects, "").error, /unknown setting "colour"; provider, model, effort, permission, project or poteto/);
     assert.deepEqual(checkDefault("poteto", "ON", models, projects, ""), { value: true, error: "" });
     assert.deepEqual(checkDefault("poteto", "off", models, projects, ""), { value: false, error: "" });
     assert.deepEqual(checkDefault("poteto", "Yes", models, projects, ""), { value: true, error: "" });
@@ -338,4 +430,13 @@ test("readOpenWith refuses a model, a project or a permission mode bb does not l
     assert.match(readOpenWith("gpt", "", "", "", models, projects).error, /unknown model "gpt"/);
     assert.match(readOpenWith("", "", "nope", "", models, projects).error, /unknown project "nope"/);
     assert.match(readOpenWith("", "", "", "bypass", models, projects).error, /permission takes accept-edits, auto, full/);
+});
+
+test("readOpenWith validates against whichever provider's list it is given", () => {
+    // The leader menu offers the saved provider's models, so openWith must
+    // accept them: a vibe model in the vibe list, refused in the claude one.
+    assert.deepEqual(readOpenWith("mistral-large-4-0-3", "", "", "", vibeModels, projects),
+        { change: { model: "mistral-large-4-0-3" }, pick: false, error: "" });
+    assert.match(readOpenWith("mistral-large-4-0-3", "", "", "", models, projects).error, /unknown model "mistral-large-4-0-3"/);
+    assert.match(readOpenWith("opus", "", "", "", vibeModels, projects).error, /unknown model "opus"/);
 });

@@ -1,9 +1,9 @@
 pragma ComponentBehavior: Bound
 
 // Start a bb thread from anywhere in the niri session: a prompt, and under it
-// the model, the effort, the permission mode, the project and poteto mode the
-// thread starts with — the newest Opus, high, auto, no project, poteto off,
-// until Ctrl+S saves others.
+// the provider, the model, the effort, the permission mode, the project and
+// poteto mode the thread starts with — Claude Code, the newest Opus, high,
+// auto, no project, poteto off, until Ctrl+S saves others.
 //
 // The overlay opens over IPC, from Super+Space b n in chauvenity's leader menu:
 //
@@ -12,7 +12,9 @@ pragma ComponentBehavior: Bound
 // and the defaults can be read and set the same way:
 //
 //     qs -c bb-new ipc call bbnew get effort
-//     qs -c bb-new ipc call bbnew set effort max     a model by id or name, an
+//     qs -c bb-new ipc call bbnew set effort max     a provider by id or name
+//                                                    (claude-code, vibe), a
+//                                                    model by id or name, an
 //                                                    effort, a permission mode
 //                                                    (accept-edits, auto, full),
 //                                                    a project by id or name,
@@ -45,8 +47,9 @@ pragma ComponentBehavior: Bound
 // is kept, with its settings, for the next open; an empty one starts over
 // from the defaults.
 //
-// Keys: Enter start · Shift+Enter new line · Alt+M / Alt+Shift+M next /
-// previous model · Alt+E / Alt+Shift+E next / previous effort · Alt+A /
+// Keys: Enter start · Shift+Enter new line · Alt+V / Alt+Shift+V next /
+// previous provider · Alt+M / Alt+Shift+M next / previous model · Alt+E /
+// Alt+Shift+E next / previous effort · Alt+A /
 // Alt+Shift+A next / previous permission mode · Alt+P pick the
 // project · Alt+T poteto mode (the /poteto-mode prefix shows in the prompt) · Ctrl+S
 // save these settings as the defaults · Esc close.
@@ -93,6 +96,7 @@ ShellRoot {
     property var targetScreen: null
 
     // What the thread starts with: ids, "" for no project.
+    property string provider: Logic.DEFAULTS.provider
     property string model: Logic.DEFAULTS.model
     property string effort: Logic.DEFAULTS.effort
     property string permission: Logic.DEFAULTS.permission
@@ -100,7 +104,7 @@ ShellRoot {
     // On while the prompt starts with /poteto-mode, typed or put there by Alt+T.
     readonly property bool poteto: Logic.hasPoteto(promptInput.text)
 
-    readonly property var models: store.models.length > 0 ? store.models : Logic.FALLBACK_MODELS
+    readonly property var models: Logic.modelsOrFallback(store.modelsByProvider, root.provider)
     readonly property var projects: store.projects
     readonly property var currentModel: Logic.findModel(root.models, root.model)
 
@@ -117,12 +121,13 @@ ShellRoot {
 
     readonly property var hints: root.picking
         ? [["type", "filter"], ["↑↓", "select"], ["Enter", "pick"], ["Esc", "back"]]
-        : [["Enter", "start"], ["Shift+Enter", "new line"], ["Alt+M", "model"], ["Alt+E", "effort"],
+        : [["Enter", "start"], ["Shift+Enter", "new line"], ["Alt+V", "provider"], ["Alt+M", "model"], ["Alt+E", "effort"],
            ["Alt+A", "permission"], ["Alt+P", "project"], ["Alt+T", "poteto"], ["Ctrl+S", "save as default"], ["Esc", "close"]]
 
     // bb listed something else: keep the settings to what it has.
     onModelsChanged: root.settle()
     onProjectsChanged: root.settle()
+    onProviderChanged: root.listModels(root.provider)
 
     FileView {
         id: storeFile
@@ -138,14 +143,16 @@ ShellRoot {
         JsonAdapter {
             id: store
             // The defaults: ids, "" for no project.
+            property string provider: Logic.DEFAULTS.provider
             property string model: Logic.DEFAULTS.model
             property string effort: Logic.DEFAULTS.effort
             property string permission: Logic.DEFAULTS.permission
             property string project: Logic.DEFAULTS.project
             property bool poteto: Logic.DEFAULTS.poteto
-            // What bb last listed: [{id, name, efforts, defaultEffort}] and
-            // [{id, name}].
-            property var models: []
+            // What bb last listed, per provider id:
+            // {providerId: [{id, name, efforts, defaultEffort}]}, and the
+            // projects [{id, name}].
+            property var modelsByProvider: ({})
             property var projects: []
         }
     }
@@ -172,7 +179,7 @@ ShellRoot {
         // Opens with these settings over those it would open with; "" leaves
         // one as it is. Answers why not, or "" once it is opening.
         function openWith(model: string, effort: string, project: string, permission: string): string {
-            const asked = Logic.readOpenWith(model, effort, project, permission, root.models, root.projects);
+            const asked = Logic.readOpenWith(model, effort, project, permission, Logic.modelsOrFallback(store.modelsByProvider, store.provider), root.projects);
             if (asked.error)
                 return asked.error;
             root.asked = asked;
@@ -182,30 +189,34 @@ ShellRoot {
                 root.summon();
             return "";
         }
-        // What Super+Space's bb page offers, as JSON: see leaderArguments.
+        // What Super+Space's bb page offers, as JSON: see leaderArguments. The
+        // page steps through the saved provider's models.
         function choices(): string {
-            return JSON.stringify(Logic.leaderArguments(root.models, { model: store.model, effort: store.effort, permission: store.permission }));
+            return JSON.stringify(Logic.leaderArguments(Logic.modelsOrFallback(store.modelsByProvider, store.provider),
+                { model: store.model, effort: store.effort, permission: store.permission }));
         }
-        // A default: model, effort, permission, project ("none" for no
-        // project) or poteto.
+        // A default: provider, model, effort, permission, project ("none" for
+        // no project) or poteto.
         function get(key: string): string {
             if (key === "project")
                 return store.project || "none";
             if (key === "poteto")
                 return store.poteto ? "on" : "off";
-            if (key === "model" || key === "effort" || key === "permission")
+            if (key === "provider" || key === "model" || key === "effort" || key === "permission")
                 return store[key];
-            return `unknown setting "${key}"; model, effort, permission, project or poteto`;
+            return `unknown setting "${key}"; provider, model, effort, permission, project or poteto`;
         }
         // Sets a default and answers "ok", or why not. A new model brings its
-        // own default effort if it does not take the current one.
+        // own default effort if it does not take the current one; a new
+        // provider brings its own models on the next open.
         function set(key: string, value: string): string {
-            const checked = Logic.checkDefault(key, value, root.models, root.projects, store.model);
+            const savedModels = Logic.modelsOrFallback(store.modelsByProvider, store.provider);
+            const checked = Logic.checkDefault(key, value, savedModels, root.projects, store.model);
             if (checked.error)
                 return checked.error;
             store[key] = checked.value;
             if (key === "model")
-                store.effort = Logic.effortFor(Logic.findModel(root.models, checked.value), store.effort);
+                store.effort = Logic.effortFor(Logic.findModel(savedModels, checked.value), store.effort);
             return "ok";
         }
     }
@@ -224,8 +235,26 @@ ShellRoot {
 
     function summon() {
         probe.running = true;
-        modelLister.running = true;
+        root.listModels(root.provider);
         projectLister.running = true;
+    }
+
+    property string listingProvider: ""
+    property var queuedProviders: []
+
+    function listModels(provider) {
+        if (modelLister.running) {
+            if (root.listingProvider !== provider && root.queuedProviders.indexOf(provider) === -1)
+                root.queuedProviders.push(provider);
+            return;
+        }
+        root.startList(provider);
+    }
+
+    function startList(provider) {
+        root.listingProvider = provider;
+        modelLister.command = [root.bb, "provider", "models", provider, "--json"];
+        modelLister.running = true;
     }
 
     // Opens on the output niri has focused rather than wherever Qt puts it.
@@ -247,7 +276,7 @@ ShellRoot {
         root.asked = null;
         if (!asked)
             return;
-        root.apply(Logic.normalize(Object.assign({ model: root.model, effort: root.effort, permission: root.permission, project: root.project, poteto: root.poteto }, asked.change),
+        root.apply(Logic.normalize(Object.assign({ provider: root.provider, model: root.model, effort: root.effort, permission: root.permission, project: root.project, poteto: root.poteto }, asked.change),
                                    root.models, root.projects));
         if (asked.pick && !root.picking)
             root.beginPick();
@@ -259,14 +288,15 @@ ShellRoot {
     }
 
     function useDefaults() {
-        root.apply(Logic.normalize({ model: store.model, effort: store.effort, permission: store.permission, project: store.project, poteto: store.poteto }, root.models, root.projects));
+        root.apply(Logic.normalize({ provider: store.provider, model: store.model, effort: store.effort, permission: store.permission, project: store.project, poteto: store.poteto }, root.models, root.projects));
     }
 
     function settle() {
-        root.apply(Logic.normalize({ model: root.model, effort: root.effort, permission: root.permission, project: root.project, poteto: root.poteto }, root.models, root.projects));
+        root.apply(Logic.normalize({ provider: root.provider, model: root.model, effort: root.effort, permission: root.permission, project: root.project, poteto: root.poteto }, root.models, root.projects));
     }
 
     function apply(settings) {
+        root.provider = settings.provider;
         root.model = settings.model;
         root.effort = settings.effort;
         root.permission = settings.permission;
@@ -292,25 +322,31 @@ ShellRoot {
     }
 
     // --- what bb lists --------------------------------------------------------------
-    // Asked at start, for `ipc call bbnew set` before the first open, and again
-    // on each open. Stored only when it changed, so an open does not rewrite
+    // Asked at start, for `ipc call bbnew set` before the first open, on each
+    // open and when the provider changes; each provider's models are kept
+    // under its id. Stored only when they changed, so an open does not rewrite
     // state.json.
 
     Component.onCompleted: {
-        modelLister.running = true;
+        root.listModels(Logic.DEFAULT_PROVIDER);
         projectLister.running = true;
     }
 
     Process {
         id: modelLister
-        command: [root.bb, "provider", "models", Logic.PROVIDER, "--json"]
         stdout: StdioCollector {
             id: modelsOut
-            onStreamFinished: {
-                const models = Logic.parseModels(modelsOut.text);
-                if (models.length > 0 && JSON.stringify(models) !== JSON.stringify(store.models))
-                    store.models = models;
+        }
+        onExited: code => {
+            const provider = root.listingProvider;
+            const models = Logic.parseModels(modelsOut.text);
+            if (models.length > 0) {
+                const merged = Logic.mergeListedModels(store.modelsByProvider, provider, models);
+                if (merged !== store.modelsByProvider)
+                    store.modelsByProvider = merged;
             }
+            if (root.queuedProviders.length > 0)
+                root.startList(root.queuedProviders.shift());
         }
     }
 
@@ -331,6 +367,10 @@ ShellRoot {
 
     // --- changing the settings ------------------------------------------------------
 
+    function cycleProvider(step) {
+        root.provider = Logic.nextProvider(root.provider, step);
+    }
+
     function cycleModel(step) {
         root.model = Logic.nextModel(root.models, root.model, step);
         root.effort = Logic.effortFor(Logic.findModel(root.models, root.model), root.effort);
@@ -345,12 +385,13 @@ ShellRoot {
     }
 
     function saveDefaults() {
+        store.provider = root.provider;
         store.model = root.model;
         store.effort = root.effort;
         store.permission = root.permission;
         store.project = root.project;
         store.poteto = root.poteto;
-        root.notice = "Saved as the defaults: " + Logic.modelName(root.models, root.model) + " · " + root.effort
+        root.notice = "Saved as the defaults: " + Logic.providerName(root.provider) + " · " + Logic.modelName(root.models, root.model) + " · " + root.effort
             + " · " + root.permission + " · " + Logic.projectName(root.projects, root.project) + (root.poteto ? " · poteto on" : "");
         noticeTimer.restart();
     }
@@ -395,10 +436,15 @@ ShellRoot {
         const prompt = promptInput.text.trim();
         if (root.starting || Logic.isBlank(prompt))
             return;
+        const block = Logic.spawnBlock(root.models, root.provider, root.model);
+        if (block !== "") {
+            root.error = block;
+            return;
+        }
         root.error = "";
         root.notice = "";
         root.starting = true;
-        spawner.exec(Logic.spawnCommand(root.bb, { model: root.model, effort: root.effort, permission: root.permission, project: root.project }, prompt));
+        spawner.exec(Logic.spawnCommand(root.bb, { provider: root.provider, model: root.model, effort: root.effort, permission: root.permission, project: root.project }, prompt));
         spawnTimeout.restart();
     }
 
@@ -455,6 +501,8 @@ ShellRoot {
                 root.close();
         } else if (root.starting) {
             // Nothing changes while bb is starting the thread.
+        } else if (alt && key === Qt.Key_V) {
+            root.cycleProvider(shift ? -1 : 1);
         } else if (alt && key === Qt.Key_M) {
             root.cycleModel(shift ? -1 : 1);
         } else if (alt && key === Qt.Key_E) {
@@ -584,7 +632,7 @@ ShellRoot {
                         }
                         Text {
                             anchors.right: parent.right
-                            text: Logic.PROVIDER
+                            text: Logic.providerName(root.provider)
                             color: root.dimColor
                             font.family: root.monoFont
                             font.pixelSize: 11
@@ -658,9 +706,16 @@ ShellRoot {
                         }
                     }
 
-                    Row {
+                    Flow {
+                        width: parent.width
                         spacing: 8
 
+                        Chip {
+                            label: "provider"
+                            value: Logic.providerName(root.provider)
+                            changed: root.provider !== store.provider
+                            theme: root.theme
+                        }
                         Chip {
                             label: "model"
                             value: root.currentModel ? root.currentModel.name : root.model

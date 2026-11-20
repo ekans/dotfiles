@@ -1,12 +1,17 @@
 // Logic for the new bb thread overlay (shell.qml): reading what bb lists,
-// cycling the model, the effort and the permission mode, the project list, the poteto switch, and
-// the `bb thread spawn` command.
+// cycling the provider, the model, the effort and the permission mode, the project list, the poteto
+// switch, and the `bb thread spawn` command.
 //
 // Plain ECMAScript, no QML: the overlay imports it and tests/bbnew.test.mjs
 // runs it under node. Keep to what Qt's JavaScript engine parses — no object
 // spread, no regex lookbehind or named groups.
 
-export const PROVIDER = "claude-code";
+export const PROVIDERS = [
+    { id: "claude-code", name: "Claude Code" },
+    { id: "acp-vibe", name: "vibe" },
+];
+
+export const DEFAULT_PROVIDER = PROVIDERS[0].id;
 
 // bb's projectless home: a thread there gets a scratch workspace, no repo.
 // pick-to-bb starts its threads there too.
@@ -17,7 +22,7 @@ export const NO_PROJECT = { id: "", name: "No project" };
 
 // What a thread starts with until Ctrl+S saves something else. Ids; "" is no
 // project.
-export const DEFAULTS = { model: "opus", effort: "high", permission: "auto", project: "", poteto: false };
+export const DEFAULTS = { provider: DEFAULT_PROVIDER, model: "opus", effort: "high", permission: "auto", project: "", poteto: false };
 
 // bb's permission modes, from the least the agent may do alone to the most.
 // accept-edits asks before anything outside the workspace sandbox, auto lets
@@ -48,7 +53,7 @@ export const FALLBACK_MODELS = [
     { id: "opus", name: "Opus", efforts: ["low", "medium", "high", "xhigh", "ultracode", "max"], defaultEffort: "high" },
 ];
 
-const SETTINGS = ["model", "effort", "permission", "project", "poteto"];
+const SETTINGS = ["provider", "model", "effort", "permission", "project", "poteto"];
 
 function parseJson(text) {
     try {
@@ -136,6 +141,39 @@ export function findModel(models, id) {
     return models.find(m => m.id === id) || null;
 }
 
+export function findProvider(id) {
+    return PROVIDERS.find(p => p.id === id) || null;
+}
+
+export function providerName(id) {
+    const provider = findProvider(id);
+    return provider ? provider.name : id;
+}
+
+export function nextProvider(id, step) {
+    return cycle(PROVIDERS.map(p => p.id), id, step);
+}
+
+export function modelsOrFallback(modelsByProvider, provider) {
+    const listed = modelsByProvider ? modelsByProvider[provider] : null;
+    if (listed && listed.length > 0)
+        return listed;
+    return provider === DEFAULT_PROVIDER ? FALLBACK_MODELS : [];
+}
+
+// `modelsByProvider` with `provider`'s list set to `models`, or the same
+// object back when it already holds them: an answer is always stored under
+// the provider it was asked for, never under whichever is current when it
+// lands.
+export function mergeListedModels(modelsByProvider, provider, models) {
+    const current = modelsByProvider ? modelsByProvider[provider] : null;
+    if (JSON.stringify(models) === JSON.stringify(current))
+        return modelsByProvider;
+    const byProvider = Object.assign({}, modelsByProvider);
+    byProvider[provider] = models;
+    return byProvider;
+}
+
 // NO_PROJECT for "", null for an id bb does not list.
 export function findProject(projects, id) {
     if (!id)
@@ -183,15 +221,18 @@ export function effortFor(model, effort) {
     return model.efforts[0];
 }
 
-// `settings` made to fit what bb lists: a model it has, an effort that model
-// takes, a permission mode bb has, and no project in place of one it no longer lists. An empty project
-// list is bb not having answered yet, so the project stays.
+// `settings` made to fit what bb lists: a provider it offers, a model it has,
+// an effort that model takes, a permission mode bb has, and no project in
+// place of one it no longer lists. An empty project list is bb not having
+// answered yet, so the project stays.
 export function normalize(settings, models, projects) {
+    const provider = findProvider(settings.provider) ? settings.provider : DEFAULT_PROVIDER;
     const model = findModel(models, settings.model) || models[0] || null;
     let project = settings.project || "";
     if (project !== "" && projects.length > 0 && !findProject(projects, project))
         project = "";
     return {
+        provider: provider,
         model: model ? model.id : settings.model,
         effort: effortFor(model, settings.effort),
         permission: PERMISSIONS.indexOf(settings.permission) !== -1 ? settings.permission : DEFAULTS.permission,
@@ -266,11 +307,21 @@ export function isBlank(text) {
 
 // --- starting the thread --------------------------------------------------------------
 
+// "" when a thread can spawn with these settings, else why not: bb has not
+// listed the provider's models yet, or the model is not one of them.
+export function spawnBlock(models, provider, model) {
+    if (models.length === 0)
+        return "bb has not listed " + providerName(provider) + "'s models yet";
+    if (!findModel(models, model))
+        return "unknown model " + JSON.stringify(model) + "; one of " + models.map(m => m.id).join(", ");
+    return "";
+}
+
 // `bb thread spawn` for `prompt` with these settings. `--prompt=` keeps a prompt
 // that starts with a dash from reading as an option. Poteto mode is already in
 // the prompt, as its prefix.
 export function spawnCommand(bb, settings, prompt) {
-    const command = [bb, "thread", "spawn", "--json", "--provider", PROVIDER,
+    const command = [bb, "thread", "spawn", "--json", "--provider", settings.provider || DEFAULT_PROVIDER,
         "--model", settings.model, "--reasoning-level", settings.effort,
         "--permission-mode", settings.permission];
     if (settings.project)
@@ -297,12 +348,19 @@ export function parseSpawn(stdout, stderr, code) {
 // --- defaults over IPC ----------------------------------------------------------------
 
 // A default set with `qs ipc call bbnew set <key> <value>`, checked against what
-// bb lists: {value, error}, value the id to store. A model or a project may be
-// given by id or by name, no project as "none"; an effort has to be one the
-// default model takes; a permission mode one of PERMISSIONS; poteto is on or off.
+// bb lists: {value, error}, value the id to store. A provider, a model or a
+// project may be given by id or by name, no project as "none"; an effort has
+// to be one the default model takes; a permission mode one of PERMISSIONS;
+// poteto is on or off.
 export function checkDefault(key, value, models, projects, modelId) {
     const v = String(value || "").trim();
     const lower = v.toLowerCase();
+    if (key === "provider") {
+        const provider = PROVIDERS.find(p => p.id === v || p.name.toLowerCase() === lower);
+        if (provider)
+            return { value: provider.id, error: "" };
+        return { value: "", error: "unknown provider " + JSON.stringify(v) + "; one of " + PROVIDERS.map(p => p.id).join(", ") };
+    }
     if (key === "model") {
         const model = models.find(m => m.id === v || m.name.toLowerCase() === lower);
         if (model)
@@ -336,7 +394,7 @@ export function checkDefault(key, value, models, projects, modelId) {
             return { value: false, error: "" };
         return { value: false, error: "poteto takes on or off, not " + JSON.stringify(v) };
     }
-    return { value: "", error: "unknown setting " + JSON.stringify(key) + "; model, effort, permission, project or poteto" };
+    return { value: "", error: "unknown setting " + JSON.stringify(key) + "; provider, model, effort, permission, project or poteto" };
 }
 
 // --- Super+Space's bb page ----------------------------------------------------------------
