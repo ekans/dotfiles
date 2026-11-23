@@ -142,6 +142,11 @@ export function sinkLabel(description, name) {
 // once and falls back METER_FALL per second, and a tick holds each high for
 // METER_HOLD seconds before falling METER_HOLD_FALL per second. From
 // METER_WARN up the bar takes the warn colour: the sink is close to clipping.
+//
+// The meter steps every METER_INTERVAL ms, not every frame: a 14 px bar
+// falling METER_FALL per second moves under a pixel a step, so stepping more
+// often would only redraw the same pixels.
+export const METER_INTERVAL = 40;
 export const METER_FALL = 1.4;
 export const METER_HOLD = 0.6;
 export const METER_HOLD_FALL = 0.8;

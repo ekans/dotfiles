@@ -39,11 +39,16 @@ Row {
 
     // Peaks arrive about 20 times a second; this smooths the fall between
     // them, and stops once both bars are back to idle and nothing sounds.
-    FrameAnimation {
+    Timer {
+        property real last: 0
+        interval: Audio.METER_INTERVAL
+        repeat: true
         running: monitor.peak > 0 || !Audio.meterIdle(meter.leftBar) || !Audio.meterIdle(meter.rightBar)
         onTriggered: {
+            const now = Date.now();
+            const dt = Math.min((now - last) / 1000, 0.1);
+            last = now;
             const peaks = Audio.stereoPeaks(monitor.enabled ? monitor.peaks : []);
-            const dt = Math.min(frameTime, 0.1);
             meter.leftBar = Audio.meterStep(meter.leftBar, peaks[0], dt);
             meter.rightBar = Audio.meterStep(meter.rightBar, peaks[1], dt);
         }

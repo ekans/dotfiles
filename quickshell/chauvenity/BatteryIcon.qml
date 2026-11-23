@@ -4,10 +4,11 @@ pragma ComponentBehavior: Bound
 // the level in the tone's colour. Drawn rather than taken from the icon theme,
 // so it takes the bar's colours.
 //
-// While charging a bolt sits across it and a bright fifth of the outline runs
-// round it, like current in a circuit. At 10 % or below on battery (the
-// "alert" tone) the outline turns the bad colour, a "!" replaces the level,
-// and the inside lights up with `glow`, BatteryAlarm's heartbeat.
+// While charging a bolt sits across it, still: an animation here would redraw
+// the bar every frame for as long as the laptop is plugged in. At 10 % or
+// below on battery (the "alert" tone) the outline turns the bad colour, a "!"
+// replaces the level, and the inside lights up with `glow`, BatteryAlarm's
+// heartbeat.
 
 import QtQuick
 import QtQuick.Shapes
@@ -92,41 +93,6 @@ Item {
             height: 1.4
             radius: 0.7
             color: icon.theme.fgColor
-        }
-    }
-
-    // The charging trace: ShapePath.trim (Qt 6.10) shows a fifth of the
-    // outline and trim.offset walks it round, wrapping past the start.
-    Shape {
-        visible: icon.charging
-        anchors.fill: body
-        preferredRendererType: Shape.CurveRenderer
-
-        ShapePath {
-            id: trace
-            strokeColor: icon.theme.goodColor
-            strokeWidth: 1.2
-            fillColor: "transparent"
-            capStyle: ShapePath.RoundCap
-            trim.end: 0.22
-
-            PathRectangle {
-                x: 0.5
-                y: 0.5
-                width: body.width - 1
-                height: body.height - 1
-                radius: body.radius - 0.5
-            }
-        }
-
-        NumberAnimation {
-            target: trace
-            property: "trim.offset"
-            from: 0
-            to: 1
-            duration: 1800
-            loops: Animation.Infinite
-            running: icon.charging
         }
     }
 

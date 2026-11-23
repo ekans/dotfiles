@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
     nodeKind, volumeTone, percent, stepVolume, streamLabel, unpluggedSinks, sinkLabel,
     inputDevices, paVolume,
-    stereoPeaks, meterStep, meterIdle, METER_IDLE, METER_FALL, METER_HOLD,
+    stereoPeaks, meterStep, meterIdle, METER_IDLE, METER_FALL, METER_HOLD, METER_INTERVAL,
     outputTest, inputTest, testListening, testTarget, testHeard, testStepEnded, MIC_SILENCE,
 } from "../audio.mjs";
 
@@ -242,6 +242,27 @@ test("meterStep comes back to exactly idle in silence", () => {
         bar = meterStep(bar, 0, 0.016);
     assert.ok(meterIdle(bar));
     assert.deepEqual(meterStep(METER_IDLE, 0, 0.016), METER_IDLE);
+});
+
+test("stepped every METER_INTERVAL, the meter draws what a per-frame one does", () => {
+    const px = bar => [Math.round(bar.level * 14), Math.round((1 - bar.hold) * 13)];
+    const fall = dt => {
+        const frames = [];
+        let bar = meterStep(METER_IDLE, 1, dt);
+        for (let t = 0; t < 3 && !meterIdle(bar); t += dt) {
+            frames.push({ t, px: px(bar) });
+            bar = meterStep(bar, 0, dt);
+        }
+        return frames;
+    };
+    const fast = fall(1 / 120), slow = fall(METER_INTERVAL / 1000);
+    for (const { t, px: [level, hold] } of slow) {
+        const at = fast.find(f => f.t >= t - 1e-9) || { px: [0, 13] };
+        assert.ok(Math.abs(at.px[0] - level) <= 1, `level at ${t.toFixed(2)} s`);
+        assert.ok(Math.abs(at.px[1] - hold) <= 1, `hold at ${t.toFixed(2)} s`);
+    }
+    const idleAt = frames => frames[frames.length - 1].t;
+    assert.ok(Math.abs(idleAt(slow) - idleAt(fast)) <= METER_INTERVAL / 1000, "goes idle as soon");
 });
 
 const SAMPLES = "/usr/share/sounds/freedesktop/stereo/audio-channel-front-";
