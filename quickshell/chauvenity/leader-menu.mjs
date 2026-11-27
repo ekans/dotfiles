@@ -38,6 +38,7 @@ export const MENU = [
     ] },
     { key: "p", name: "pull requests", run: qs("pr-review", "prreview", "toggle") },
     { key: "c", name: "caffeine", run: qs("chauvenity", "caffeine", "toggle") },
+    { key: "a", name: "light / dark", run: qs("chauvenity", "appearance", "toggle") },
     { key: "w", name: "walkpad", children: [
         { key: "w", name: "panel", run: qs("chauvenity", "bar", "toggle", "walkpad") },
         { key: "f", name: "finish the walk", run: qs("chauvenity", "walkpad", "finish") },

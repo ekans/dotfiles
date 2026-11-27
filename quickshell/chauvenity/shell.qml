@@ -32,6 +32,7 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import Quickshell.Services.Pipewire
 import "calendar.mjs" as Cal
+import "appearance.mjs" as Scheme
 import "claude-pace.mjs" as Pace
 import "hints.mjs" as Hints
 import "window-title.mjs" as WindowTitle
@@ -458,6 +459,61 @@ ShellRoot {
         }
     }
 
+    // --- light / dark -------------------------------------------------------
+    // The apps' appearance, not the bar's, which keeps its palette: GNOME's
+    // colour-scheme key, which the portal hands to every app that follows the
+    // system (appearance.mjs). GTK 3 apps ignore it. The sun or moon in the
+    // bar shows it and a click flips it, as do the leader menu's `a` and:
+    //
+    //     qs -c chauvenity ipc call appearance toggle
+
+    // "light" or "dark", as gsettings last said; "" until it has answered.
+    property string appearance: ""
+
+    function flipAppearance() {
+        if (root.appearance === "")
+            return;
+        root.appearance = root.appearance === "dark" ? "light" : "dark";
+        writeScheme.exec(Scheme.setScheme(root.appearance));
+    }
+
+    IpcHandler {
+        target: "appearance"
+
+        // Answers with the new scheme, "light" or "dark", or "" before
+        // gsettings has answered, when it changes nothing.
+        function toggle(): string {
+            root.flipAppearance();
+            return root.appearance;
+        }
+    }
+
+    // The scheme now, then every change to it, from the settings app as well
+    // as from here.
+    Process {
+        id: watchScheme
+        running: true
+        command: ["sh", "-c", "gsettings get org.gnome.desktop.interface color-scheme"
+            + " && exec gsettings monitor org.gnome.desktop.interface color-scheme"]
+        stdout: SplitParser {
+            onRead: line => root.appearance = Scheme.readScheme(line) ?? root.appearance
+        }
+        onRunningChanged: {
+            if (!watchScheme.running)
+                restartWatchScheme.restart();
+        }
+    }
+
+    Timer {
+        id: restartWatchScheme
+        interval: 5000
+        onTriggered: watchScheme.running = true
+    }
+
+    Process {
+        id: writeScheme
+    }
+
     // --- notifications ------------------------------------------------------
     // This shell is the notification server. They show one at a time in an
     // island out of the middle of the bar (NotificationIsland), on the
@@ -805,7 +861,7 @@ ShellRoot {
             }
 
             // Right: Claude Code usage, walkpad, tray, network, volume,
-            // battery, caffeine, notifications, clock.
+            // battery, caffeine, light/dark, notifications, clock.
             Row {
                 id: rightItems
                 anchors.right: parent.right
@@ -862,6 +918,13 @@ ShellRoot {
                     theme: root
                     on: root.caffeine
                     onFlipped: root.caffeine = !root.caffeine
+                }
+
+                Appearance {
+                    anchors.verticalCenter: parent.verticalCenter
+                    theme: root
+                    mode: root.appearance
+                    onFlipped: root.flipAppearance()
                 }
 
                 Notifications {
